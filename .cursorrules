@@ -1,0 +1,179 @@
+# Core Rules
+1. Answer questions in Chinese
+2. Plan first, then execute
+3. When encountering problems, record lessons learned in .cursorrules file
+4. Record my requirements in .cursorrules file
+5. English comments for code
+
+# Planning Guidelines
+- Analyze key points and objectives of the problem
+- Break down into executable subtasks
+- Estimate potential difficulties
+- Develop clear execution steps
+
+# Execution Best Practices
+- Execute according to planned steps
+- Record problems and solutions during execution
+- Update lessons learned promptly
+- Ensure code quality and maintainability
+
+# Lessons Learned Format
+## [Date] Problem Category
+- Problem Description:
+- Solution:
+- Lessons Learned:
+- Prevention Measures:
+
+# Code Standards
+- Use English for code comments
+- Use meaningful and standardized variable names
+- Maintain clear code structure
+- Add appropriate error handling
+
+# Project Best Practices and Lessons Learned
+Only analyze .py code files in the project, no need to analyze .gitignore file
+
+## 0. Environment Setup
+- Project uses conda environment named 'targo'
+- Always activate environment before working: conda activate targo
+- Load required modules:
+  - module load compiler/gcc-8.3
+  - module load cuda/11.3.0
+
+## 1. Code Language Consistency
+- Always keep code comments and text in one language (preferably English)
+- This makes code more maintainable and shareable internationally
+- Exception: When UI needs to display in specific language
+
+## 2. Data Visualization Best Practices
+- Include clear titles and labels
+- Add value labels on charts for better readability
+- Use consistent color schemes
+- Save high resolution output (300+ dpi)
+
+## 3. Code Organization
+- Group related code with clear section headers
+- Use descriptive variable names
+- Include data source and date in comments
+- Separate data preparation from visualization logic
+
+## 4. Documentation
+- Document data sources and dates
+- Explain any special setup requirements (like fonts)
+- Include expected outputs
+
+## 5. Error Prevention
+- Add font fallbacks for different systems
+- Include error handling for file operations
+- Document system requirements
+
+## 6. SSH/Remote Environment Best Practices
+- Avoid interactive display commands (like plt.show())
+- Always close figures to free memory (use plt.close())
+- Save outputs to files instead of displaying
+- Use appropriate file paths for remote systems
+- Consider environment limitations when designing code
+
+These practices help maintain code quality and reproducibility across projects.
+
+# Lessons Learned Records
+## [2024-03-21] MinkowskiEngine Version Compatibility
+- Problem Description:
+  - SparseEncoding object lacks expected attributes in different versions
+  - Different versions use different names: 'indices', 'C', 'coordinates'
+  
+- Solution:
+  - Add multiple attribute checks using hasattr()
+  - Check for all known attribute names in different versions
+  - Provide clear error message if no compatible attribute found
+
+- Lessons Learned:
+  - Always handle multiple version compatibility
+  - Add comprehensive attribute checks
+  - Provide clear error messages
+  - Document all known attribute variations
+
+- Prevention Measures:
+  1. Document dependency versions clearly
+  2. Add version compatibility checks
+  3. Keep track of API changes in dependencies
+  4. Test code with different library versions
+  5. Implement graceful fallbacks
+
+## [2024-03-21] Mesh Voxelization Compatibility
+- Problem Description:
+  - Different versions of libraries handle voxelization differently
+  - Attributes for accessing voxel indices vary across versions
+  - Direct dependency on specific library attributes is risky
+  
+- Solution:
+  - Use try-except blocks to handle multiple possible attribute names
+  - Start with most basic/common attributes first
+  - Provide clear error messages for debugging
+  - Fallback to library-agnostic methods when possible
+
+- Lessons Learned:
+  - Avoid direct dependency on specific library versions
+  - Implement graceful fallbacks for core functionality
+  - Use defensive programming for version compatibility
+  - Test with multiple library versions
+
+- Prevention Measures:
+  1. Document all known attribute variations
+  2. Implement multiple fallback methods
+  3. Use try-except for robust error handling
+  4. Test with different library versions
+  5. Keep track of library API changes
+
+## [Current Date] Module Import Compatibility
+- Problem Description:
+  - Missing pykdtree module
+  - Import error in KDTree implementation
+  
+- Solution:
+  - Replace with scipy.spatial.KDTree
+  - Alternative: Install pykdtree if specific features needed
+  
+- Lessons Learned:
+  - Use standard library alternatives when possible
+  - Document dependency requirements clearly
+  
+- Prevention Measures:
+  1. List all required packages in requirements.txt
+  2. Use widely available packages when possible
+  3. Document any special installation requirements
+
+# Code Execution Best Practices
+## 1. Code Execution Steps
+- Activate environment: conda activate targo
+- Load modules:
+  ```bash
+  module load compiler/gcc-8.3
+  module load cuda/11.3.0
+  ```
+- Execute code:
+  ```bash
+  python scripts/inference.py [parameters]
+  ```
+
+## 2. Error Handling Process
+1. If first execution fails:
+   - Check code version compatibility issues
+   - Try using more generic attribute access methods
+   - Add detailed error logging
+
+2. If second execution fails:
+   - Use @web to search for solutions
+   - Check official library documentation
+   - Try alternative solutions or fallback handling
+
+3. Pre-execution checks:
+   - Ensure environment is correctly activated
+   - Ensure all dependencies are installed
+   - Check input parameter correctness
+
+## 3. Debugging Tips
+- Add detailed log outputs
+- Use try-except to catch specific exceptions
+- Add assertion checks at key points
+- Print intermediate results and variable values
