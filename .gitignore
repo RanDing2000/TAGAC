@@ -17,7 +17,6 @@ eval_results_train_full-slight-occlusion-1000/
 *.pyd
 *.pyw
 *.pyz
-*.py
 /submodules/
 src/transformer/__pycache__
 src/__pycache__
