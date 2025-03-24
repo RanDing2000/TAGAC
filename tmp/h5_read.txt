@@ -1,0 +1,24 @@
+key
+'object'
+                        for subkey in f[key].keys():
+                            print(f"    Subkey: {subkey}")
+    Subkey: com
+    Subkey: density
+    Subkey: file
+    Subkey: friction
+    Subkey: inertia
+    Subkey: mass
+    Subkey: scale
+    Subkey: volume
+f['object']['inertia'][()]
+array([[5.660008e-04, 5.210000e-08, 5.276000e-06],
+       [5.210000e-08, 5.721480e-05, 2.622000e-07],
+       [5.276000e-06, 2.622000e-07, 5.659692e-04]])
+f['object']['com'][()]
+array([0.03518586, 0.15817975, 0.06492642])
+f['object']['friction'][()]
+1.0
+f['object']['volume'][()]
+0.0003431222
+f['object']['density'][()]
+150.0

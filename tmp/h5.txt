@@ -1,0 +1,21 @@
+f['object']['friction']
+<HDF5 dataset "friction": shape (), type "<f8">
+f['object']['friction'][()]
+1.0
+inertia = f['object']['inertia'][()]
+inertia
+array([[ 5.445400e-05, -8.228000e-07, -1.677000e-07],
+       [-8.228000e-07,  1.739282e-04,  1.630100e-06],
+       [-1.677000e-07,  1.630100e-06,  1.323020e-04]])
+com = f['object']['com'][()]
+com
+array([0.44183954, 0.22129556, 0.06017495])
+mass = f['object']['mass'][()]
+mass
+0.0543102555
+volume = f['object']['volume'][()]
+volume
+0.0003620684
+density = f['object']['density'][()]
+density
+150.0

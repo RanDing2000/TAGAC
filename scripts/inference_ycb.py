@@ -40,7 +40,7 @@ def create_and_write_args_to_result_path(args):
     Then write the command-line arguments to a text file in that directory.
     """
     # Only keep certain model types
-    if args.type == "targo":
+    if args.type == "targo" or args.type == "targo_full_targ" or args.type == "targo_hunyun2":
         model_name = f'{args.type}'
     elif args.type in ("giga", "giga_aff", "vgn", "giga_hr"):
         model_name = f'{args.type}'
@@ -87,16 +87,6 @@ def find_and_assign_first_checkpoint(args):
         print("Unsupported type.")
         return
 
-    # model_directory = os.path.join(args.model_root, model_name)
-    # checkpoint_pattern = os.path.join(model_directory, '*.pt')
-    # checkpoint_files = glob.glob(checkpoint_pattern)
-
-    # if len(checkpoint_files) > 0:
-    #     args.model = checkpoint_files[0]
-    #     print("Assigned model:", args.model)
-    # else:
-    #     print("No checkpoint files found.")
-
 
 def main(args):
     """
@@ -129,8 +119,6 @@ def main(args):
         raise NotImplementedError(f"Model type '{args.type}' is not implemented.")
 
     # Only keep the target_sample_offline evaluation
-
-
     occ_level_sr = target_sample_offline_ycb.run(
         grasp_plan_fn=grasp_planner,
         logdir=args.logdir,
@@ -157,33 +145,24 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
-    # Keep only the necessary arguments
     parser.add_argument("--type", default="targo_full_targ",
                         choices=["giga", "vgn", "targo", "targo_full_targ", "targo_hunyun2"],
                         help="Model type: giga_hr | giga_aff | giga | vgn | targo | targo_full_targ | targo_hunyun2")
-    # parser.add_argument("--hunyun2_path", type=str, default='/usr/stud/dira/GraspInClutter/Gen3DSR/output_amodal/ycb_amodal_middle_occlusion_icp_v7',
-    #                     help="Path to hunyun2 model.")
     parser.add_argument("--hunyun2_path", type=str, default=None,
                         help="Path to hunyun2 model.")
     parser.add_argument("--result_root", type=Path,
-                        default='eval_results_train_full-slight-occlusion-1000/')
+                        default='targo_eval_results/eval_results_train_full-slight-occlusion-1000')
     parser.add_argument("--result-path", default='', type=str,
                         help="If empty, a new result path will be created automatically.")
-    # parser.add_argument("--logdir", type=Path, default='eval_results/',
-    #                     help="Directory for storing logs or intermediate results.")
-    parser.add_argument("--logdir", type=Path, default='eval_results_train_full-slight-occlusion-1000/',
+    parser.add_argument("--logdir", type=Path, default='targo_eval_results/eval_results_train_full-slight-occlusion-1000',
                         help="Directory for storing logs or intermediate results.")
     parser.add_argument("--description", type=str, default="",
                         help="Optional experiment description.")
     parser.add_argument("--test_root", type=str,
-                        default='/usr/stud/dira/GraspInClutter/targo/output/maniskill-ycb-v2-slight-occlusion-1000')
-    parser.add_argument("--model", type=Path, default='/usr/stud/dira/GraspInClutter/targo/checkpoints/targonet.pt')
+                        default='output/maniskill-ycb-v2-slight-occlusion-1000')
+    parser.add_argument("--model", type=Path, default='checkpoints/targonet.pt')
     parser.add_argument("--scene", type=str, choices=["pile", "packed"], default="packed")
-    # parser.add_argument("--object-set", type=str, default="ycb_objects/test")
     parser.add_argument("--object-set", type=str, default="packed/train")
-    parser.add_argument("--num-objects", type=int, default=5)
-    parser.add_argument("--num-view", type=int, default=1)
-    parser.add_argument("--num-rounds", type=int, default=100)
     parser.add_argument("--occ_level_dict", type=str, default='output/maniskill-ycb-v2-slight-occlusion-1000/test_set/occ_level_dict.json')
     parser.add_argument("--sim-gui", type=str2bool, default=False,
                         help="Whether to enable a simulation GUI.")
@@ -193,22 +172,15 @@ if __name__ == "__main__":
                         help="Use the best valid grasp if available.")
     parser.add_argument("--force", action="store_true", default=True,
                         help="Force selection of a grasp even if below threshold.")
-    parser.add_argument("--add-noise", type=str, default="dex",
-                        help="Type of noise added to depth or input data: 'trans', 'dex', 'norm' or none.")
     parser.add_argument("--sideview", action="store_true", default=True,
                         help="Capture the scene from one side rather than top-down.")
-    parser.add_argument("--silence", action="store_true",
-                        help="Disable the tqdm progress bar.")
-    # parser.add_argument("--vis", action="store_true", default=True,
-    #                     help="Whether to visualize and save the affordance map.")
     parser.add_argument("--vis", action="store_true", default=False,
                         help="Whether to visualize and save the affordance map.")
 
-    args = parser.parse_args()
+    # Removed unnecessary parameters:
+    # --num-objects, --num-view, --num-rounds, --add-noise, --silence
 
-    # Automatically find the first checkpoint if model is '.'
-    if str(args.model) == ".":
-        find_and_assign_first_checkpoint(args)
+    args = parser.parse_args()
 
     # Automatically create a result path if none is provided
     if str(args.result_path) == "":
