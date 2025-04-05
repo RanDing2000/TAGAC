@@ -7,6 +7,11 @@ from datetime import datetime
 
 import numpy as np
 
+import sys
+sys.path = [
+    '../src/FGCGraspNet',
+] + sys.path
+
 # Grasp planner modules 
 from src.vgn.detection import VGN
 from src.vgn.detection_implicit import VGNImplicit
@@ -17,7 +22,6 @@ from src.vgn.experiments import target_sample_offline_ycb
 # Utility
 # (We keep set_random_seed here if you plan to reuse it, but it's not strictly used now.)
 from src.vgn.utils.misc import set_random_seed
-
 
 def str2bool(v):
     """
@@ -94,23 +98,23 @@ def main(args):
     """
     # Choose VGN or VGNImplicit depending on 'args.type'
     if args.type == 'vgn':
-        grasp_planner = VGN(
+        grasp_planner = VGN( # it's not used in this script
             args.model,
             args.type,
             best=args.best,
             qual_th=args.qual_th,
             force_detection=args.force,
-            out_th=0.5,  # You can adjust this threshold as needed
+            out_th=args.out_th if hasattr(args, 'out_th') and args.out_th is not None else 0.5,  # Use args.out_th if provided, otherwise default to 0.5
             visualize=args.vis
         )
-    elif args.type in ['giga', 'giga_aff', 'giga_hr', 'targo', 'targo_full_targ', 'targo_hunyun2']:
+    elif args.type in ['giga', 'giga_aff', 'giga_hr', 'targo', 'targo_full_targ', 'targo_hunyun2', 'FGC-GraspNet']:
         grasp_planner = VGNImplicit(
             args.model,
             args.type,
             best=args.best,
             qual_th=args.qual_th,
             force_detection=args.force,
-            out_th=0.5,  # You can adjust this threshold as needed
+            out_th=args.out_th if hasattr(args, 'out_th') and args.out_th is not None else 0.5,  # Use args.out_th if provided, otherwise default to 0.5
             select_top=False,
             visualize=args.vis,
             cd_iou_measure=True,
@@ -145,25 +149,29 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--type", default="targo_full_targ",
-                        choices=["giga", "vgn", "targo", "targo_full_targ", "targo_hunyun2"],
-                        help="Model type: giga_hr | giga_aff | giga | vgn | targo | targo_full_targ | targo_hunyun2")
+    parser.add_argument("--type", default="FGC-GraspNet",
+                        choices=["giga", "vgn", "targo", "targo_full_targ", "targo_hunyun2", "FGC-GraspNet"],
+                        help="Model type: giga_hr | giga_aff | giga | vgn | targo | targo_full_targ | targo_hunyun2 | FGC-GraspNet")
+    parser.add_argument("--occlusion-level", type=str, choices=["slight", "medium"], default="slight",
+                        help="Occlusion level for the experiment: slight or medium.")
     parser.add_argument("--hunyun2_path", type=str, default=None,
                         help="Path to hunyun2 model.")
     parser.add_argument("--result_root", type=Path,
-                        default='targo_eval_results/eval_results_train_full-slight-occlusion-1000')
+                        default=None)
     parser.add_argument("--result-path", default='', type=str,
                         help="If empty, a new result path will be created automatically.")
-    parser.add_argument("--logdir", type=Path, default='targo_eval_results/eval_results_train_full-slight-occlusion-1000',
+    parser.add_argument("--logdir", type=Path, default=None,
                         help="Directory for storing logs or intermediate results.")
     parser.add_argument("--description", type=str, default="",
                         help="Optional experiment description.")
     parser.add_argument("--test_root", type=str,
-                        default='output/maniskill-ycb-v2-slight-occlusion-1000')
+                        default=None)
     parser.add_argument("--model", type=Path, default='checkpoints/targonet.pt')
+    parser.add_argument("--out_th", type=float, default=0.5,
+                        help="Output threshold for valid grasps.")
     parser.add_argument("--scene", type=str, choices=["pile", "packed"], default="packed")
     parser.add_argument("--object-set", type=str, default="packed/train")
-    parser.add_argument("--occ_level_dict", type=str, default='output/maniskill-ycb-v2-slight-occlusion-1000/test_set/occ_level_dict.json')
+    parser.add_argument("--occ_level_dict", type=str, default=None)
     parser.add_argument("--sim-gui", type=str2bool, default=False,
                         help="Whether to enable a simulation GUI.")
     parser.add_argument("--qual-th", type=float, default=0.9,
@@ -176,11 +184,42 @@ if __name__ == "__main__":
                         help="Capture the scene from one side rather than top-down.")
     parser.add_argument("--vis", action="store_true", default=False,
                         help="Whether to visualize and save the affordance map.")
+    
+    args = parser.parse_args()
+    
+    # Set paths based on occlusion level
+    if args.occlusion_level == "medium":
+        if args.hunyun2_path is None:
+            args.hunyun2_path = '/usr/stud/dira/GraspInClutter/Gen3DSR/output_amodal/ycb_amodal_middle_occlusion_icp_v7_only_gt_1000'
+        if args.result_root is None:
+            args.result_root = 'targo_eval_results/ycb/eval_results_full-middle-occlusion'
+        if args.logdir is None:
+            args.logdir = Path('targo_eval_results/ycb/eval_results_full-middle-occlusion')
+        if args.test_root is None:
+            args.test_root = 'output/work/maniskill-ycb-v2-middle-occlusion-1000'
+        if args.occ_level_dict is None:
+            args.occ_level_dict = 'output/work/maniskill-ycb-v2-middle-occlusion-1000/test_set/occ_level_dict.json'
+    elif args.occlusion_level == "slight":
+        if args.hunyun2_path is None:
+            args.hunyun2_path = '/usr/stud/dira/GraspInClutter/Gen3DSR/output_amodal/ycb_amodal_slight_occlusion_icp_v7_only_gt_1000'
+        if args.result_root is None:
+            args.result_root = 'targo_eval_results/ycb/eval_results_full-slight-occlusion'
+        if args.logdir is None:
+            args.logdir = Path('targo_eval_results/ycb/eval_results_full-slight-occlusion')
+        if args.test_root is None:
+            args.test_root = 'output/work/maniskill-ycb-v2-slight-occlusion-1000'
+        if args.occ_level_dict is None:
+            args.occ_level_dict = 'output/work/maniskill-ycb-v2-slight-occlusion-1000/test_set/occ_level_dict.json'
 
     # Removed unnecessary parameters:
     # --num-objects, --num-view, --num-rounds, --add-noise, --silence
 
-    args = parser.parse_args()
+    # 确保args.logdir不为None
+    if args.logdir is None:
+        if args.occlusion_level == "medium":
+            args.logdir = Path('targo_eval_results/ycb/eval_results_full-middle-occlusion')
+        else:
+            args.logdir = Path('targo_eval_results/ycb/eval_results_full-slight-occlusion')
 
     # Automatically create a result path if none is provided
     if str(args.result_path) == "":

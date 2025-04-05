@@ -1,0 +1,19 @@
+type: targo_hunyun2
+occlusion_level: slight
+hunyun2_path: /usr/stud/dira/GraspInClutter/Gen3DSR/output_amodal/ycb_amodal_slight_occlusion_icp_v7_only_gt_1000
+result_root: targo_eval_results/ycb/eval_results_full-slight-occlusion
+result_path: targo_eval_results/ycb/eval_results_full-slight-occlusion/targo_hunyun2/2025-04-05_05-49-54
+logdir: targo_eval_results/ycb/eval_results_full-slight-occlusion
+description: 
+test_root: output/maniskill-ycb-v2-slight-occlusion-1000
+model: checkpoints/targonet.pt
+out_th: 0.5
+scene: packed
+object_set: packed/train
+occ_level_dict: output/maniskill-ycb-v2-slight-occlusion-1000/test_set/occ_level_dict.json
+sim_gui: False
+qual_th: 0.9
+best: True
+force: True
+sideview: True
+vis: False

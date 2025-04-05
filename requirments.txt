@@ -1,0 +1,13 @@
+scipy
+pandas
+matplotlib
+catkin_pkg
+pybullet==2.7.9
+pytorch-ignite
+tensorboard
+tqdm
+trimesh
+urdfpy
+cython
+scikit-image
+pykdtree

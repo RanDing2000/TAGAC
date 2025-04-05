@@ -5,7 +5,7 @@ from pathlib import Path
 
 # 定义目录路径
 center_dir = "/usr/stud/dira/GraspInClutter/targo/data/acronym/ShapeNetSem-backup/models-OBJ/models_center"
-source_dir = "/storage/user/dira/acronym/ShapeNetSem-backup/models-OBJ-corrupted/models"
+source_dir = "/usr/stud/dira/GraspInClutter/targo/data/acronym/ShapeNetSem-backup/models-OBJ/models"
 
 # 统计变量
 total_files = 0

@@ -6,9 +6,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 # 路径设置
-eval_file = "/usr/stud/dira/GraspInClutter/targo/targo_eval_results/eval_results_train_full-middle-occlusion-1000/targo_full_targ/2025-03-22_20-18-47/meta_evaluations.txt"
-category_file = "/usr/stud/dira/GraspInClutter/targo/targo_eval_results/stastics_analysis/category_ycb.json"
-output_dir = "/usr/stud/dira/GraspInClutter/targo/targo_eval_results/eval_results_train_full-middle-occlusion-1000/targo_full_targ/2025-03-22_20-18-47"
+eval_file = "/usr/stud/dira/GraspInClutter/targo/targo_eval_results/eval_results_train_full-middle-occlusion/targo/2025-04-04_08-18-07/meta_evaluations.txt"
+category_file = "/usr/stud/dira/GraspInClutter/targo/targo_eval_results/stastics_analysis/ycb_prompt_dict.json"
+output_dir = "/usr/stud/dira/GraspInClutter/targo/targo_eval_results/eval_results_train_full-middle-occlusion/targo/2025-04-04_08-18-07"
 
 # 确保输出目录存在
 os.makedirs(output_dir, exist_ok=True)
