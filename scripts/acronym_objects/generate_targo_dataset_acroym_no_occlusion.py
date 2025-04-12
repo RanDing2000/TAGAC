@@ -1,4 +1,3 @@
-
 ## TODO target_id, target_body, mesh_pose_dict should be aligne
 import os
 import argparse
@@ -8,6 +7,8 @@ from pathlib import Path
 import numpy as np
 import open3d as o3d
 import logging
+import json
+import uuid
 from src.vgn.utils.misc import apply_noise
 from src.vgn.io import *
 from src.vgn.perception import *
@@ -21,8 +22,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 occ_level_scene_dict = {}
 occ_level_dict_count = {
-    "0.3-0.4": 0,
-    "0.4-0.5": 0,
+    "0-0.1": 0,
 }
 
 def duplicate_points(points, target_size):
@@ -149,6 +149,7 @@ def process_and_store_scene_data(sim, scene_id, target_id, noisy_depth_side_c, s
 # Example usage:
 # clutter_id = process_and_store_scene_data(sim, scene_id, target_id, noisy_depth_side_c, seg_side_c, extr_side_c, args, occ_level_c)
 
+
 def depth_to_point_cloud(depth_img, mask_targ, intrinsics, extrinsics, num_points):
     """
     Convert a masked and scaled depth image into a point cloud using camera intrinsics and inverse extrinsics.
@@ -191,7 +192,6 @@ def depth_to_point_cloud(depth_img, mask_targ, intrinsics, extrinsics, num_point
     
     return points_transformed
 
-
 def depth_to_point_cloud_no_specify(depth_img, mask_targ, intrinsics, extrinsics):
     """
     Convert a masked and scaled depth image into a point cloud using camera intrinsics and inverse extrinsics.
@@ -233,9 +233,6 @@ def depth_to_point_cloud_no_specify(depth_img, mask_targ, intrinsics, extrinsics
     
     return points_transformed
 
-
-
-
 def render_side_images(sim, n=1, random=False, segmentation=False):
     height, width = sim.camera.intrinsic.height, sim.camera.intrinsic.width
     origin = Transform(Rotation.identity(), np.r_[sim.size / 2, sim.size / 2, sim.size / 3])
@@ -271,15 +268,16 @@ def render_side_images(sim, n=1, random=False, segmentation=False):
         return depth_imgs, extrinsics
         
 def main(args):
-    sim = ClutterRemovalSim(args.scene, args.object_set, gui=args.sim_gui)
+    sim = ClutterRemovalSim(args.scene, args.object_set, gui=args.sim_gui, is_acronym=True)
     finger_depth = sim.gripper.finger_depth
     
     path = f'{args.root}/scenes'
     if not os.path.exists(path):
         (args.root / "scenes").mkdir(parents=True)
-    mesh_pose_dict_path = f'{args.root}/mesh_pose_dict'
-    if not os.path.exists(mesh_pose_dict_path):
+    path = f'{args.root}/mesh_pose_dict'
+    if not os.path.exists(path):
         (args.root / "mesh_pose_dict").mkdir(parents=True)
+    
     write_setup(
         args.root,
         sim.size,
@@ -291,9 +289,12 @@ def main(args):
         path = f'{args.root}/test_set'
         if not os.path.exists(path):
             os.makedirs(path)
-
-    object_count = np.random.randint(4, 11)  # 11 is excluded
-    sim.reset(object_count, is_ycb=True)
+            
+    if args.is_acronym:
+        object_count = np.random.randint(2, 6)  # 11 is excluded
+    else:
+        object_count = np.random.randint(4, 11)  # 11 is excluded
+    sim.reset(object_count, is_acronym=args.is_acronym, is_ycb=args.is_ycb, is_egad=args.is_egad, is_g1b=args.is_g1b)
     sim.save_state()
 
     generate_scenes(sim)
@@ -354,24 +355,16 @@ def generate_scenes(sim):
         occ_level_c = 1 - count_cluttered[target_id] / count_single
 
         # Only process scenes with occlusion level < 0.1
-        # Process scenes based on occlusion level
-        if 0.3 <= occ_level_c < 0.4:
-            bin_key = "0.3-0.4"
-        elif 0.4 <= occ_level_c < 0.5:
-            bin_key = "0.4-0.5"
-        else:
-            sim.world.remove_body(target_body)
-            continue
-
-        current_count = occ_level_dict_count[bin_key]
-        if current_count >= MAX_BIN_COUNT:
-            sim.world.remove_body(target_body)
-            continue
-        else:
-            if process_and_store_scene_data(sim, scene_id, target_id, noisy_depth_side_c, seg_side_c, extr_side_c, args, occ_level_c) != None:
-                occ_level_dict_count[bin_key] += 1
-                occ_level_scene_dict[scene_id + '_c_' + str(target_id)] = occ_level_c
-                write_test_set_point_cloud(args.root, scene_id + f"_c_{target_id}", mesh_clutter_pose_dict, target_body.name, name="mesh_pose_dict")
+        if occ_level_c == 0.0:
+            current_count = occ_level_dict_count["0-0.1"]
+            if current_count >= MAX_BIN_COUNT:
+                sim.world.remove_body(target_body)
+                continue
+            else:
+                if process_and_store_scene_data(sim, scene_id, target_id, noisy_depth_side_c, seg_side_c, extr_side_c, args, occ_level_c) != None:
+                    occ_level_dict_count["0-0.1"] += 1
+                    occ_level_scene_dict[scene_id + '_c_' + str(target_id)] = occ_level_c
+                    write_test_set_point_cloud(args.root, scene_id + f"_c_{target_id}", mesh_clutter_pose_dict, target_body.name, name="mesh_pose_dict")
         
         sim.world.remove_body(target_body)
         logger.info(f"scene {scene_id}, target '{target_body.name}' done")
@@ -382,7 +375,7 @@ def generate_scenes(sim):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--root",type=Path, default= '/usr/stud/dira/GraspInClutter/targo/output/ycb/maniskill-ycb-v2-middle-occlusion-1000')
+    parser.add_argument("--root",type=Path, default= '/usr/stud/dira/GraspInClutter/targo/output/acronym/acronym-no-occlusion-1000-v2')
     parser.add_argument("--scene", type=str, choices=["pile", "packed"], default="packed")
     parser.add_argument("--object-set", type=str, default="packed/train")
     parser.add_argument("--num-grasps", type=int, default=10000)
@@ -392,6 +385,10 @@ if __name__ == "__main__":
     parser.add_argument("--sim-gui", action="store_true", default=False)
     parser.add_argument("--add-noise", type=str, default='norm', help = "norm_0.005 | norm | dex")
     parser.add_argument("--num-proc", type=int, default=2, help="Number of processes to use")
+    parser.add_argument("--is-acronym", action="store_true", default=True)
+    parser.add_argument("--is-ycb", action="store_true", default=False)
+    parser.add_argument("--is-egad", action="store_true", default=False)
+    parser.add_argument("--is-g1b", action="store_true", default=False)
 
     args = parser.parse_args()
     while check_occ_level_not_full(occ_level_dict_count):

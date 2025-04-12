@@ -107,7 +107,7 @@ def main(args):
             out_th=args.out_th if hasattr(args, 'out_th') and args.out_th is not None else 0.5,  # Use args.out_th if provided, otherwise default to 0.5
             visualize=args.vis
         )
-    elif args.type in ['giga', 'giga_aff', 'giga_hr', 'targo', 'targo_full_targ', 'targo_hunyun2', 'FGC-GraspNet']:
+    elif args.type in ['giga', 'giga_aff', 'giga_hr', 'targo', 'targo_full_targ', 'targo_hunyun2', 'FGC-GraspNet', 'AnyGrasp']:
         grasp_planner = VGNImplicit(
             args.model,
             args.type,
@@ -150,10 +150,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--type", default="FGC-GraspNet",
-                        choices=["giga", "vgn", "targo", "targo_full_targ", "targo_hunyun2", "FGC-GraspNet"],
-                        help="Model type: giga_hr | giga_aff | giga | vgn | targo | targo_full_targ | targo_hunyun2 | FGC-GraspNet")
-    parser.add_argument("--occlusion-level", type=str, choices=["slight", "medium"], default="slight",
-                        help="Occlusion level for the experiment: slight or medium.")
+                        choices=["giga", "vgn", "targo", "targo_full_targ", "targo_hunyun2", "FGC-GraspNet", "AnyGrasp"],
+                        help="Model type: giga_hr | giga_aff | giga | vgn | targo | targo_full_targ | targo_hunyun2 | FGC-GraspNet | AnyGrasp")
+    parser.add_argument("--occlusion-level", type=str, choices=["no", "slight", "medium"], default="no",
+                        help="Occlusion level for the experiment: no, slight or medium.")
     parser.add_argument("--hunyun2_path", type=str, default=None,
                         help="Path to hunyun2 model.")
     parser.add_argument("--result_root", type=Path,
@@ -196,9 +196,9 @@ if __name__ == "__main__":
         if args.logdir is None:
             args.logdir = Path('targo_eval_results/ycb/eval_results_full-middle-occlusion')
         if args.test_root is None:
-            args.test_root = 'output/work/maniskill-ycb-v2-middle-occlusion-1000'
+            args.test_root = 'output/ycb/maniskill-ycb-v2-middle-occlusion-1000'
         if args.occ_level_dict is None:
-            args.occ_level_dict = 'output/work/maniskill-ycb-v2-middle-occlusion-1000/test_set/occ_level_dict.json'
+            args.occ_level_dict = 'output/ycb/maniskill-ycb-v2-middle-occlusion-1000/test_set/occ_level_dict.json'
     elif args.occlusion_level == "slight":
         if args.hunyun2_path is None:
             args.hunyun2_path = '/usr/stud/dira/GraspInClutter/Gen3DSR/output_amodal/ycb_amodal_slight_occlusion_icp_v7_only_gt_1000'
@@ -207,9 +207,20 @@ if __name__ == "__main__":
         if args.logdir is None:
             args.logdir = Path('targo_eval_results/ycb/eval_results_full-slight-occlusion')
         if args.test_root is None:
-            args.test_root = 'output/work/maniskill-ycb-v2-slight-occlusion-1000'
+            args.test_root = 'output/ycb/maniskill-ycb-v2-slight-occlusion-1000'
         if args.occ_level_dict is None:
-            args.occ_level_dict = 'output/work/maniskill-ycb-v2-slight-occlusion-1000/test_set/occ_level_dict.json'
+            args.occ_level_dict = 'output/ycb/maniskill-ycb-v2-slight-occlusion-1000/test_set/occ_level_dict.json'
+    elif args.occlusion_level == "no":
+        if args.hunyun2_path is None:
+            args.hunyun2_path = '/usr/stud/dira/GraspInClutter/Gen3DSR/output_amodal/work/ycb_amodal_no_occlusion_icp_v7_only_gt_1000'
+        if args.result_root is None:
+            args.result_root = 'targo_eval_results/ycb/eval_results_full-no-occlusion'
+        if args.logdir is None:
+            args.logdir = Path('targo_eval_results/ycb/eval_results_full-no-occlusion')
+        if args.test_root is None:
+            args.test_root = 'output/ycb/maniskill-ycb-v2-no-occlusion-1000'
+        if args.occ_level_dict is None:
+            args.occ_level_dict = 'output/ycb/maniskill-ycb-v2-no-occlusion-1000/test_set/occ_level_dict.json'
 
     # Removed unnecessary parameters:
     # --num-objects, --num-view, --num-rounds, --add-noise, --silence
@@ -218,8 +229,10 @@ if __name__ == "__main__":
     if args.logdir is None:
         if args.occlusion_level == "medium":
             args.logdir = Path('targo_eval_results/ycb/eval_results_full-middle-occlusion')
-        else:
+        elif args.occlusion_level == "slight":
             args.logdir = Path('targo_eval_results/ycb/eval_results_full-slight-occlusion')
+        else:
+            args.logdir = Path('targo_eval_results/ycb/eval_results_full-no-occlusion')
 
     # Automatically create a result path if none is provided
     if str(args.result_path) == "":

@@ -310,7 +310,7 @@ def generate_scenes(sim):
         occ_level_c = 1 - count_cluttered[target_id] / count_single
 
         # Process scenes based on occlusion level
-        if occ_level_c < 0.1:
+        if 0.0 < occ_level_c < 0.1:
             bin_key = "0-0.1"
         elif 0.1 <= occ_level_c < 0.2:
             bin_key = "0.1-0.2"
@@ -337,9 +337,10 @@ def generate_scenes(sim):
     return
 
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--root",type=Path, default= '/usr/stud/dira/GraspInClutter/targo/output/maniskill-acronym-v2-slight-occlusion-1000')
+    parser.add_argument("--root",type=Path, default= '/usr/stud/dira/GraspInClutter/targo/output/acronym/acronym-slight-occlusion-1000-v2')
     parser.add_argument("--scene", type=str, choices=["pile", "packed"], default="packed")
     parser.add_argument("--object-set", type=str, default="packed/train")
     parser.add_argument("--num-grasps", type=int, default=10000)

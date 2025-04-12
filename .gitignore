@@ -10,6 +10,8 @@ eval_results_train_full-middle-occlusion/
 eval_results_train_full-middle-occlusion-1000/
 eval_results_train_full-slight-occlusion/
 eval_results_train_full-slight-occlusion-1000/
+targo_eval_results/
+demo/
 *.png
 *.pdf
 *.pyc
@@ -37,3 +39,4 @@ data/models
 *.ply
 output/
 src/
+targo_eval_results/

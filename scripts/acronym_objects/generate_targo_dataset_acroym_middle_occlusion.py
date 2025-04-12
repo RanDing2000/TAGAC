@@ -334,9 +334,10 @@ def generate_scenes(sim):
     return
 
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--root",type=Path, default= '/usr/stud/dira/GraspInClutter/targo/output/maniskill-acronym-v2-middle-occlusion-1000')
+    parser.add_argument("--root",type=Path, default= '/usr/stud/dira/GraspInClutter/targo/output/acronym/acronym-middle-occlusion-1000-v2')
     parser.add_argument("--scene", type=str, choices=["pile", "packed"], default="packed")
     parser.add_argument("--object-set", type=str, default="packed/train")
     parser.add_argument("--num-grasps", type=int, default=10000)
