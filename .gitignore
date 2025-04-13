@@ -38,6 +38,23 @@ data/models
 *.pdf
 *.ply
 output/
-src/*
-!src/vgn/detection_implicit.py
+# src/*
+# !src/vgn/detection_implicit.py
 targo_eval_results/
+src/__pycache__
+src/anygrasp_sdk/
+src/FGCGraspNet/
+src/shape_completion/
+src/submodules
+src/transformer
+src/vgn/__pycache__
+src/vgn/ConvONets/__pycache__
+src/vgn/ConvONets/conv_onet/__pycache__
+# 忽略src下所有子文件夹中的__pycache__目录
+src/**/__pycache__/
+# 确保捕获所有嵌套层级的__pycache__
+**/__pycache__/
+# 忽略所有.pyc文件(Python编译文件)
+**/*.pyc
+*.json
+*.csv

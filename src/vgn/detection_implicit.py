@@ -1,0 +1,812 @@
+import time
+
+import numpy as np
+import trimesh
+from scipy import ndimage
+import torch
+import os
+import re
+import argparse
+
+#from vgn import vis
+from src.vgn.grasp import *
+from src.vgn.utils.transform import Transform, Rotation
+from src.vgn.networks import load_network
+from src.vgn.utils import visual
+from src.utils_giga import *
+
+from src.utils_giga import tsdf_to_ply, point_cloud_to_tsdf, filter_grasps_by_target
+from src.utils_targo import tsdf_to_mesh
+
+from src.shape_completion.config import cfg_from_yaml_file
+from src.shape_completion import builder
+# from src.shape_completion.models.AdaPoinTr import AdaPoinTr
+# from src.transformer.fusion_model import AdaPoinTr
+# from src.shape_completion.models.AdaPoinTr import AdaPoinTr
+import sys
+# sys.path = [
+#     '../src/FGCGraspNet',
+# ] + sys.path
+from src.shape_completion.models.AdaPoinTr import AdaPoinTr
+from src.FGCGraspNet.models.FGC_graspnet import FGC_graspnet
+from src.FGCGraspNet.dataset.graspnet_dataset import GraspNetDataset
+from src.FGCGraspNet.models.decode import pred_decode
+from graspnetAPI import GraspGroup
+import sys
+sys.path.append('/usr/stud/dira/GraspInClutter/targo/src/anygrasp_sdk/grasp_detection')
+from gsnet import AnyGrasp
+from graspnetAPI import GraspGroup
+LOW_TH = 0.0
+
+def get_grasps(net, end_points):
+    # Forward pass
+    with torch.no_grad():
+        end_points = net(end_points)
+        grasp_preds = pred_decode(end_points)
+    gg_array = grasp_preds[0].detach().cpu().numpy()
+    gg = GraspGroup(gg_array)
+    # if save the results, return gg_array
+    return gg
+
+def vis_grasps(gg, cloud, anygrasp=False, fgc=False):
+    gg.nms()
+    gg.sort_by_score()
+    gg = gg[:50]
+    grippers = gg.to_open3d_geometry_list()
+    # o3d.visualization.draw_geometries([cloud, *grippers])
+    # save as glb file, cloud and grippers
+    # Convert Open3D geometries to trimesh
+    import trimesh
+    # Save the point cloud to a PLY file
+    if anygrasp:
+        o3d.io.write_point_cloud('demo/cloud_anygrasp.ply', cloud)
+        print('Point cloud saved to demo/cloud_anygrasp.ply')
+    elif fgc:
+        o3d.io.write_point_cloud('demo/cloud_fgc.ply', cloud)
+        print('Point cloud saved to demo/cloud_fgc.ply')
+    else:
+        o3d.io.write_point_cloud('demo/cloud.ply', cloud)
+        print('Point cloud saved to demo/cloud.ply')
+    
+    # Convert point cloud to trimesh
+    cloud_points = np.asarray(cloud.points)
+    cloud_colors = np.asarray(cloud.colors)
+    cloud_mesh = trimesh.points.PointCloud(cloud_points, colors=cloud_colors)
+    
+    # Create a scene and add the point cloud
+    scene = trimesh.Scene()
+    scene.add_geometry(cloud_mesh)
+    
+    # Add all grippers to the scene
+    for gripper in grippers:
+        # Convert Open3D mesh to trimesh
+        vertices = np.asarray(gripper.vertices)
+        faces = np.asarray(gripper.triangles)
+        gripper_mesh = trimesh.Trimesh(vertices=vertices, faces=faces)
+        scene.add_geometry(gripper_mesh)
+    
+    # Export the scene
+    if anygrasp:
+        scene.export('demo/cloud_anygrasp_with_grasps.glb')
+        print('saved to demo/cloud_anygrasp_with_grasps.glb')
+    elif fgc:
+        scene.export('demo/cloud_fgc_with_grasps.glb')
+        print('saved to demo/cloud_fgc_with_grasps.glb')
+    else:
+        scene.export('demo/cloud_with_grasps.glb')
+        print('saved to demo/cloud_with_grasps.glb')
+
+class VGNImplicit(object):
+    def __init__(self, model_path, model_type, best=False, force_detection=False, qual_th=0.9, out_th=0.5, visualize=False, resolution=40,cd_iou_measure=False,**kwargs,):
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        if model_type != 'FGC-GraspNet' and model_type != 'AnyGrasp':
+            self.net = load_network(model_path, self.device, model_type=model_type) 
+            self.net = self.net.eval()
+        elif model_type == 'FGC-GraspNet':
+            # sel.net = None
+            self.net = FGC_graspnet(input_feature_dim=0, num_view=300, num_angle=12, num_depth=4,
+            cylinder_radius=0.05, hmin=-0.02, hmax=0.02, is_training=False, is_demo=True)
+            self.net.to(self.device)
+            checkpoint = torch.load('/usr/stud/dira/GraspInClutter/targo/src/FGCGraspNet/checkpoints/realsense_checkpoint.tar')
+            self.net.load_state_dict(checkpoint['model_state_dict'])
+            self.net.eval()
+        elif model_type == 'AnyGrasp':
+            # Initialize AnyGrasp with configuration parameters
+            parser = argparse.ArgumentParser()
+            parser.add_argument('--checkpoint_path', default='/usr/stud/dira/GraspInClutter/targo/src/anygrasp_sdk/grasp_detection/log/checkpoint_detection.tar', help='Model checkpoint path')
+            parser.add_argument('--max_gripper_width', type=float, default=0.08, help='Maximum gripper width (<=0.1m)')
+            parser.add_argument('--gripper_height', type=float, default=0.03, help='Gripper height')
+            parser.add_argument('--top_down_grasp', action='store_true', help='Output top-down grasps.')
+            parser.add_argument('--debug', action='store_true', help='Enable debug mode')
+            cfgs = parser.parse_args([])  # Empty list to avoid reading command line args
+            cfgs.max_gripper_width = max(0, min(0.1, cfgs.max_gripper_width))
+            
+            self.net = AnyGrasp(cfgs)
+            self.net.load_net()
+            # self.net.eval()
+        if model_type != 'AnyGrasp':
+            net_params_count = sum(p.numel() for p in self.net.parameters())
+            print(f"Number of parameters in self.net: {net_params_count}")
+        
+        sc_cfg = cfg_from_yaml_file("src/shape_completion/configs/AdaPoinTr.yaml")
+        sc_net = AdaPoinTr(sc_cfg.model)
+        builder.load_model(sc_net, "checkpoints/adapointr.pth")
+        sc_net = sc_net.eval()
+        self.sc_net = sc_net
+        sc_net_params_count = sum(p.numel() for p in self.sc_net.parameters())
+        print(f"Number of parameters in self.sc_net: {sc_net_params_count}")
+        
+        self.qual_th = qual_th
+        self.best = best
+        self.force_detection = force_detection
+        self.out_th = out_th
+        self.visualize = visualize
+        self.resolution = resolution
+        self.cd_iou_measure = cd_iou_measure
+        if model_type == 'giga_hr':
+            self.resolution = 60
+        x, y, z = torch.meshgrid(torch.linspace(start=-0.5, end=0.5 - 1.0 / self.resolution, steps=self.resolution), torch.linspace(start=-0.5, end=0.5 - 1.0 / self.resolution, steps=self.resolution), torch.linspace(start=-0.5, end=0.5 - 1.0 / self.resolution, steps=self.resolution))
+        pos = torch.stack((x, y, z), dim=-1).float().unsqueeze(0).to(self.device)   
+        self.pos = pos.view(1, self.resolution * self.resolution * self.resolution, 3)  ## pos: 1, 64000, -0.5, 0.475
+
+        plane = np.load("/usr/stud/dira/GraspInClutter/grasping/setup/plane_sampled.npy")
+        plane = plane.astype(np.float32)
+        self.plane = plane / 0.3 - 0.5
+        # self.plane = torch.from_numpy(plane).to(self.device)
+
+    def __call__(self, state, scene_mesh=None, visual_dict = None, hunyun2_path = None, scene_name = None, cd_iou_measure=False, target_mesh_gt = None,aff_kwargs={}):
+        ## all the keys in the namespace of state
+        visual_dict = {}
+        scene_name = scene_name
+        print(state.__dict__.keys())
+
+        if state.type in ('giga_aff', 'giga', 'giga_hr'):
+            if hasattr(state, 'tsdf_process'):
+                tsdf_process = state.tsdf_process
+            else:
+                tsdf_process = state.tgt_mask_vol  
+
+            if not hunyun2_path:
+                inputs = state.scene_grid
+            else:
+                inputs = state.scene_grid - state.targ_grid
+            voxel_size, size = state.tsdf.voxel_size, state.tsdf.size 
+            if not hunyun2_path:
+                if state.type == 'giga':
+                    qual_vol, rot_vol, width_vol, cd, iou = predict(inputs, self.pos, self.net,  None, state.type, self.device, target_mesh_gt=target_mesh_gt)
+                else:
+                    qual_vol, rot_vol, width_vol = predict(inputs, self.pos, self.net,  None, state.type, self.device, target_mesh_gt=target_mesh_gt)
+            elif hunyun2_path:
+                qual_vol, rot_vol, width_vol, completed_targ_grid = predict(inputs, self.pos, self.net,  None, state.type, self.device, visual_dict, hunyun2_path, scene_name, target_mesh_gt=target_mesh_gt)
+            
+
+        elif state.type == 'targo' or state.type == 'targo_full_targ' or state.type == 'targo_hunyun2':
+            scene_no_targ_pc = state.scene_no_targ_pc
+            scene_no_targ_pc = np.concatenate((scene_no_targ_pc, self.plane), axis=0)
+            targ_pc = state.targ_pc
+            inputs = (scene_no_targ_pc, targ_pc)    # scene_no_targ_pc is tsdf surface points, target pc is the depth backprojected points
+
+            # Handle both tensor and numpy array inputs
+            scene_pc = inputs[0]
+            targ_pc = inputs[1]
+            save_point_cloud_as_ply(scene_pc, 'scene_no_targ_pc.ply')
+            save_point_cloud_as_ply(targ_pc, 'targ_pc.ply')
+            visual_dict['targ_pc'] = state.targ_pc
+            voxel_size, size = state.tsdf.voxel_size, state.tsdf.size
+            with torch.no_grad():
+                qual_vol, rot_vol, width_vol, completed_targ_grid, cd, iou = predict(inputs, self.pos, self.net, self.sc_net, state.type, self.device, visual_dict, hunyun2_path, scene_name, cd_iou_measure=True, target_mesh_gt=target_mesh_gt)
+
+        elif state.type == 'FGC-GraspNet':
+            inputs = state.scene_pc
+            with torch.no_grad():
+                gg = predict(inputs, self.pos, self.net, self.sc_net, state.type, self.device, visual_dict, hunyun2_path, scene_name, cd_iou_measure=True, target_mesh_gt=target_mesh_gt)
+            
+            ## write target-driven filter here, 
+            scene_pc = state.scene_pc
+            target_pc = state.target_pc
+            print(scene_pc.shape, target_pc.shape)
+            target_gg =  filter_grasps_by_target(gg, target_pc)
+            # Convert scene_pc and target_pc to numpy arrays
+            
+            # Create open3d point cloud objects
+            
+        
+        elif state.type == 'AnyGrasp':
+            inputs = state.scene_pc
+            with torch.no_grad():
+                gg = predict(inputs, self.pos, self.net, self.sc_net, state.type, self.device, visual_dict, hunyun2_path, scene_name, cd_iou_measure=True, target_mesh_gt=target_mesh_gt)
+        begin = time.time()
+
+        if state.type != 'FGC-GraspNet' and state.type != 'AnyGrasp':
+            qual_vol = qual_vol.reshape((self.resolution, self.resolution, self.resolution))
+            rot_vol = rot_vol.reshape((self.resolution, self.resolution, self.resolution, 4))
+            width_vol = width_vol.reshape((self.resolution, self.resolution, self.resolution))
+
+        if state.type == 'FGC-GraspNet' or state.type == 'AnyGrasp':
+            grasp = gg[0]
+            # Convert grasp from FGC-GraspNet/AnyGrasp format to VGN format
+            # Extract grasp parameters
+            score = grasp.score
+            width = grasp.width
+            translation = grasp.translation
+            rotation_matrix = grasp.rotation_matrix
+            
+            # Create Transform object for grasp pose
+            pose = Transform(
+                Rotation.from_matrix(rotation_matrix),
+                translation
+            )
+            grasps = []
+            scores = []
+            # Create Grasp object in VGN format
+            vgn_grasp = Grasp(pose, width)
+            
+            # Add to result lists
+            grasps.append(vgn_grasp)
+            scores.append(score)
+            return grasps, scores, 0,0,0
+        
+        if state.type == 'targo' or state.type == 'targo_full_targ' or state.type == 'targo_hunyun2':
+            # Handle both numpy array and tensor inputs
+
+            if isinstance(completed_targ_grid, np.ndarray):
+                # For numpy array: reshape from (40,40,40) to (1,40,40,40)
+                completed_targ_grid = np.expand_dims(completed_targ_grid, axis=0)
+            else:
+                # For torch tensor: use squeeze and unsqueeze
+                completed_targ_grid = completed_targ_grid.squeeze().unsqueeze(0)  # from (40,40,40) to (1,40,40,40)
+            qual_vol, rot_vol, width_vol = process(completed_targ_grid, qual_vol, rot_vol, width_vol, out_th=self.out_th)
+            # qual_vol, rot_vol, width_vol = process(state.targ_grid, qual_vol, rot_vol, width_vol, out_th=self.out_th)
+        
+        elif state.type in ('giga_aff', 'giga', 'giga_hr'):
+            # qual_vol, rot_vol, width_vol = process(state.tsdf.get_grid(), qual_vol, rot_vol, width_vol, out_th=self.out_th)
+            # if hunyun2_path:
+            #     qual_vol, rot_vol, width_vol = process(completed_targ_grid.squeeze().cpu().numpy(), qual_vol, rot_vol, width_vol, out_th=self.out_th)
+            # else:
+            qual_vol, rot_vol, width_vol = process(state.targ_grid, qual_vol, rot_vol, width_vol, out_th=self.out_th)
+        if len(qual_vol.shape) == 1:
+            qual_vol = qual_vol.reshape((self.resolution, self.resolution, self.resolution))
+        qual_vol = bound(qual_vol, voxel_size)
+
+        if self.visualize:
+            colored_scene_mesh = visual.affordance_visual(qual_vol, rot_vol, scene_mesh, size, self.resolution, **aff_kwargs)
+            visual_dict['affordance_visual'] = colored_scene_mesh
+
+        grasps, scores = select(qual_vol.copy(), self.pos.view(self.resolution, self.resolution, self.resolution, 3).cpu(), rot_vol, width_vol, threshold=self.qual_th, force_detection=self.force_detection, max_filter_size=8 if self.visualize else 4)
+
+        toc = time.time()
+        grasps, scores = np.asarray(grasps), np.asarray(scores)
+
+        new_grasps = []
+        if len(grasps) > 0:
+            if self.best:
+                p = np.arange(len(grasps))
+            else:
+                p = np.random.permutation(len(grasps))
+            for g in grasps[p]:
+                pose = g.pose
+                pose.translation = (pose.translation + 0.5) * size
+                width = g.width * size
+                new_grasps.append(Grasp(pose, width))
+            scores = scores[p]
+        grasps = new_grasps
+
+        end=time.time()
+        print(f"post processing: {end-begin:.3f}s")
+        # if self.visualize:
+        # if visual_dict:
+        #     grasp_mesh_list = [visual.grasp2mesh(g, s) for g, s in zip(grasps, scores)]
+        #     composed_scene = trimesh.Scene(colored_scene_mesh)
+        #     for i, g_mesh in enumerate(grasp_mesh_list):
+        #         composed_scene.add_geometry(g_mesh, node_name=f'grasp_{i}')
+        #     visual_dict['composed_scene'] = composed_scene
+        #     return grasps, scores, toc, composed_scene
+        # else:
+        # return grasps, scores, toc, visual_dict
+        # if cd_iou_measure:
+        #     # if not completed_targ_grid:
+        #     completed_targ_grid = state.targ_grid
+        #     cd = 0
+        #     iou = 0
+        if state.type == 'targo' or state.type == 'targo_full_targ' or state.type == 'targo_hunyun2':
+            return grasps, scores, toc, completed_targ_grid, cd, iou
+        elif state.type == 'giga':
+            return grasps, scores, toc, cd, iou
+        else:
+            return grasps, scores, toc
+
+def bound(qual_vol, voxel_size, limit=[0.02, 0.02, 0.055]):
+    # avoid grasp out of bound [0.02  0.02  0.055]
+    x_lim = int(limit[0] / voxel_size)
+    y_lim = int(limit[1] / voxel_size)
+    z_lim = int(limit[2] / voxel_size)
+    qual_vol[:x_lim] = 0.0
+    qual_vol[-x_lim:] = 0.0
+    qual_vol[:, :y_lim] = 0.0
+    qual_vol[:, -y_lim:] = 0.0
+    qual_vol[:, :, :z_lim] = 0.0
+    return qual_vol
+
+def predict(inputs, pos, net, sc_net, type, device, visual_dict=None, hunyun2_path = None, scene_name = None, cd_iou_measure = False, target_mesh_gt = None):
+    sc_time = 0
+    hunyun2_path = hunyun2_path
+    scene_name = scene_name
+
+    if type in ('giga', 'giga_aff', 'vgn', 'giga_hr'):
+        assert sc_net == None
+        inputs = torch.from_numpy(inputs).to(device)
+        if hunyun2_path:
+            # completed_targ_pc = completed_targ_pc.astype(np.float32)    
+            # completed_targ_grid = point_cloud_to_tsdf(completed_targ_pc)
+            scene_path = hunyun2_path + '/' + scene_name + '/reconstruction/targ_obj_v7.ply'
+            # scene_path = hunyun2_path + '/' + scene_name + '/reconstruction/gt_targ_obj.ply'
+            targ_mesh = trimesh.load(scene_path)
+            targ_grid = mesh_to_tsdf(targ_mesh)
+            targ_grid = torch.from_numpy(targ_grid).to(device)
+            targ_grid = targ_grid.unsqueeze(0)
+            inputs += targ_grid
+            completed_targ_grid = targ_grid
+
+
+    elif type == 'targo' or type == 'targo_full_targ' or type == 'targo_hunyun2':
+        scene_no_targ_pc = torch.from_numpy(inputs[0]).unsqueeze(0).to(device)
+        targ_pc = torch.from_numpy(inputs[1]).unsqueeze(0).to(device)
+
+        with torch.no_grad():
+            if type == 'targo':
+                sc_net = sc_net.to(device)
+                sc_net_params_count = sum(p.numel() for p in sc_net.parameters())
+                print(f"Number of parameters in sc_net: {sc_net_params_count}")
+                sc_time_start = time.time()
+                completed_targ_pc = sc_net(targ_pc)[1]
+                visual_dict['completed_targ_pc'] = completed_targ_pc[0].cpu().numpy()
+                sc_time = time.time() - sc_time_start
+                print(f"Shape completion time: {sc_time:.3f}s")
+                start_pc = time.time()
+                completed_targ_pc_real_size = (completed_targ_pc+0.5)*0.3
+                targ_mesh, completed_targ_grid = point_cloud_to_tsdf(completed_targ_pc_real_size.squeeze().cpu().numpy(), return_mesh=True)
+                targ_mesh_vertices = np.asarray(targ_mesh.vertices)
+                targ_mesh_triangles = np.asarray(targ_mesh.triangles)
+                targ_trimesh = trimesh.Trimesh(vertices=targ_mesh_vertices, faces=targ_mesh_triangles)
+                cd, iou = compute_chamfer_and_iou(target_mesh_gt, targ_trimesh)
+                completed_targ_pc = filter_and_pad_point_clouds(completed_targ_pc)
+            
+            elif type == 'targo_full_targ':
+                start_pc = time.time()
+                # Sample points from ground truth target mesh
+                completed_targ_pc = target_mesh_gt.sample(2048)
+                completed_targ_pc = completed_targ_pc.astype(np.float32)
+                completed_targ_grid = point_cloud_to_tsdf(completed_targ_pc)
+                
+                # Convert to tensor and normalize
+                completed_targ_pc = torch.from_numpy(completed_targ_pc).to(device).unsqueeze(0)
+                completed_targ_pc = completed_targ_pc / 0.3 - 0.5
+                
+                # Perfect reconstruction means CD and IoU are ideal
+                cd = 0.0
+                iou = 1.0
+                
+                completed_targ_pc = filter_and_pad_point_clouds(completed_targ_pc)
+
+            if type == 'targo_hunyun2':
+                start_pc = time.time()
+                # hunyun2_path = '/usr/stud/dira/GraspInClutter/Gen3DSR/output_amodal/ycb_amodal_middle_occlusion_icp_v7_only_gt_1000'
+                scene_path = hunyun2_path + '/' + scene_name + '/reconstruction/targ_obj_hy3dgen_align.ply'
+                meta_eval_path = hunyun2_path + '/' + scene_name + '/evaluation/meta_evaluation.txt'
+                if os.path.exists(meta_eval_path):
+                    with open(meta_eval_path, 'r') as f:
+                        meta_content = f.read()
+                        # Extract CD and IoU for v6
+                        cd_match = re.search(r'Chamfer Distance v7_gt: ([\d\.]+)', meta_content)
+                        iou_match = re.search(r'IoU v7_gt: ([\d\.]+)', meta_content)
+                        if cd_match and iou_match:
+                            cd = float(cd_match.group(1))
+                            iou = float(iou_match.group(1))
+                            print(f"CD: {cd:.4f}, IoU: {iou:.4f}")
+                # scene_mesh = trimesh.load(scene_path)
+                completed_targ_mesh = trimesh.load(scene_path)
+                # completed_targ_grid =  mesh_to_tsdf(completed_targ_mesh)
+                save_point_cloud_as_ply(completed_targ_mesh.vertices, 'completed_targ_mesh.ply')
+                # Sample points from mesh using FPS (Farthest Point Sampling)
+                completed_targ_pc = completed_targ_mesh.sample(2048)
+                completed_targ_pc = completed_targ_pc.astype(np.float32)    
+                completed_targ_grid = point_cloud_to_tsdf(completed_targ_pc)
+
+                completed_targ_pc = torch.from_numpy(completed_targ_pc).to(device).unsqueeze(0)
+                # completed_targ_pc_rs = completed_targ_pc 
+                completed_targ_pc = completed_targ_pc / 0.3 - 0.5
+                save_point_cloud_as_ply(completed_targ_pc[0].cpu().numpy(), 'completed_targ_pc.ply')
+                completed_targ_pc = filter_and_pad_point_clouds(completed_targ_pc)
+                # completed_targ_grid = point_cloud_to_tsdf(completed_targ_pc_rs.cpu().numpy())
+                # completed_targ_grid =  mesh_to_tsdf(completed_targ_mesh)
+                # Print the shape of completed_targ_grid
+
+                
+                # print("Saved completed target grid visualization to completed_targ_grid_visualization.png")
+                save_point_cloud_as_ply(completed_targ_pc[0].cpu().numpy(), 'completed_targ_pc.ply')
+                # Convert mesh vertices and faces to numpy arrays
+                # completed_targ_mesh_vertices = np.array(completed_targ_mesh.vertices)
+                # completed_targ_mesh_faces = np.array(completed_targ_mesh.faces)
+                # completed_targ_mesh.vertices = completed_targ_mesh_vertices
+                # completed_targ_mesh.triangles = completed_targ_mesh_faces
+                # completed_targ_grid = mesh_to_tsdf(completed_targ_mesh)
+
+                ## make as float
+                # completed_targ_grid = completed_targ_grid.astype
+                # completed_targ_pc = completed_targ_pc.float()
+                # completed_targ_grid = completed_targ_grid.reshape((self.resolution, self.resolution, self.resolution))
+            # else:
+            #     scene_mesh = None
+            # elif type == 'FGC-GraspNet':
+                
+            targ_completed_scene_pc = torch.cat([scene_no_targ_pc, completed_targ_pc], dim=1)
+            save_point_cloud_as_ply(targ_completed_scene_pc[0].cpu().numpy(), 'targ_completed_scene_pc.ply')
+
+            ## save targ_completed_scene_pc
+            # save_point_cloud_as_ply(completed_targ_pc[0].cpu().numpy(), 'completed_targ_pc.ply')
+            # save_point_cloud_as_ply(targ_completed_scene_pc[0].cpu().numpy(), 'targ_completed_scene_pc.ply')
+            
+
+            convert_time = time.time() - start_pc
+            print(f"convert: {convert_time:.3f}s")
+                
+        # if visual_dict is not None:
+        #     mesh_dir = visual_dict['mesh_dir']
+        #     mesh_name = visual_dict['mesh_name']
+        #     path = f'{mesh_dir}/{mesh_name}_completed_targ_pc.ply'
+        #     save_point_cloud_as_ply(targ_pc[0].cpu().numpy(), path)
+        
+        if type == 'targo' or type == 'targo_full_targ' or type == 'targo_hunyun2':
+            inputs = (targ_completed_scene_pc, completed_targ_pc)
+    # if type != 'FGC-GraspNet' and type != 'AnyGrasp':
+        # targ_completed_scene_pc = inputs[0]
+        # completed_targ_pc = inputs[1]
+        # save_point_cloud_as_ply(targ_completed_scene_pc[0].cpu().numpy(), 'targ_completed_scene_pc.ply')
+        # save_point_cloud_as_ply(completed_targ_pc[0].cpu().numpy(), 'completed_targ_pc.ply')
+    time_grasp_start = time.time()
+    with torch.no_grad():
+        if type == 'FGC-GraspNet':
+            end_points = {}
+            # Convert inputs to torch tensor if it's not already
+            if isinstance(inputs, np.ndarray):
+                inputs = torch.from_numpy(inputs).float()
+            
+            # Make sure inputs is a batch
+            if len(inputs.shape) == 2:
+                inputs = inputs.unsqueeze(0)
+                
+            # Move to CUDA device
+            cloud = inputs
+            # Convert PyTorch tensor to numpy array
+            cloud_np = inputs[0].cpu().numpy()
+            # Create open3d point cloud object
+            cloud = o3d.geometry.PointCloud()
+            # Set points for the point cloud
+            cloud.points = o3d.utility.Vector3dVector(cloud_np)
+            # Keep original tensor for model input
+            inputs_tensor = inputs
+            inputs = inputs.to(device)
+            
+            # Print shape for debugging
+            print(f"FGC-GraspNet input shape: {inputs.shape}")
+            # inputs = inputs.squeeze(0)
+            end_points['point_clouds'] = inputs
+            gg = get_grasps(net, end_points)
+            # gg = net(end_points)
+            # vis_grasps(gg, cloud, anygrasp=False, fgc=True)
+            # print(gg)
+        elif type == 'AnyGrasp':
+            points = inputs
+            colors = np.zeros_like(points)
+            
+            # Create an Open3D point cloud object
+            cloud_o3d = o3d.geometry.PointCloud()
+            # Set the points of the point cloud
+            cloud_o3d.points = o3d.utility.Vector3dVector(points)
+            # Set the colors of the point cloud
+            # cloud_o3d.colors = o3d.utility.Vector3dVector(colors)
+            
+            xmin, xmax = 0.0, 1.0
+            ymin, ymax = 0.0, 1.0
+            zmin, zmax = 0.0, 1.0
+            lims = [xmin, xmax, ymin, ymax, zmin, zmax]
+            gg, cloud = net.get_grasp(points, colors, lims=lims, apply_object_mask=True, dense_grasp=False, collision_detection=True)
+            print(gg)
+            # gg = get_grasps(net, end_points)
+            vis_grasps(gg, cloud_o3d, anygrasp=True, fgc=False)
+            print(gg)
+        elif type == 'giga':
+            query_points = torch.stack(torch.meshgrid(
+                torch.linspace(-0.5, 0.475, 40),
+                torch.linspace(-0.5, 0.475, 40),
+                torch.linspace(-0.5, 0.475, 40)
+            ), dim=-1).view(-1, 3).to(device)
+            query_points = query_points.unsqueeze(0)
+            qual_vol, rot_vol, width_vol, tsdf_vol = net(inputs, pos, query_points)
+            # qual_vol, rot_vol, width_vol = net(inputs, pos)
+        else:
+            qual_vol, rot_vol, width_vol = net(inputs, pos)
+        # ## from tsdf to mesh
+        if type == 'giga':
+            tsdf_vol = tsdf_vol.cpu().squeeze().numpy()
+            tsdf_vol = tsdf_vol.reshape((40, 40, 40))
+            scene_mesh = tsdf_to_mesh(tsdf_vol)
+            # save_mesh_as_ply(scene_mesh, 'scene_mesh.ply')
+            # save_mesh_as_ply(target_mesh_gt, 'target_mesh_gt.ply')
+            # scene_mesh.export('scene_mesh.ply')
+            # target_mesh_gt.export('target_mesh_gt.ply')
+            scene_meshes = scene_mesh.split()
+            
+            # 添加错误处理，防止场景中没有找到匹配目标的网格
+            # cd, iou = None, None
+            cd, iou = 1, 0
+            try:
+                if len(scene_meshes) > 0 and target_mesh_gt is not None:
+                    target_idx, max_overlap = find_target_mesh_from_scene(scene_meshes, target_mesh=target_mesh_gt, threshold=10)
+                    if target_idx < len(scene_meshes):
+                        target_mesh = scene_meshes[target_idx]
+                        cd, iou = compute_chamfer_and_iou(target_mesh_gt, target_mesh)
+                    else:
+                        print("No mesh with sufficient match to target was found!")
+                else:
+                    print("Empty scene meshes or missing target mesh")
+            except Exception as e:
+                print(f"Error during target mesh processing: {e}")
+            # save_point_cloud_as_ply(scene_mesh.vertices, 'scene_mesh.ply')
+            # target_mesh.export('target_mesh_pred.ply')
+        net_params_count = sum(p.numel() for p in net.parameters())
+        print(f"Number of parameters in self.net: {net_params_count:,}")
+    time_grasp = time.time() - time_grasp_start
+    print(f"Grasp prediction time: {time_grasp:.3f}s")
+    total_time = time_grasp + sc_time
+    print(f"Total time: {total_time:.3f}s")
+
+    # move output back to the CPU
+    if type != 'AnyGrasp' and type != 'FGC-GraspNet':
+        qual_vol = qual_vol.cpu().squeeze().numpy()
+        rot_vol = rot_vol.cpu().squeeze().numpy()
+        width_vol = width_vol.cpu().squeeze().numpy()
+    # if (sc_net != None nyun2_path) and cd_iou_measure:
+    if type == 'targo' or type == 'targo_full_targ' or type == 'targo_hunyun2':
+        return qual_vol, rot_vol, width_vol, cd, iou
+    elif type == 'giga':
+        return qual_vol, rot_vol, width_vol, cd, iou
+    elif type == 'vgn':
+        return qual_vol, rot_vol, width_vol
+    elif type == 'AnyGrasp' or type == 'FGC-GraspNet':
+        # return grasp, score
+        return gg
+
+
+def process_vgn(
+    tsdf_vol,
+    qual_vol,
+    rot_vol,
+    width_vol,
+    gaussian_filter_sigma=1.0,
+    min_width=1.33,
+    max_width=9.33,
+    out_th=0.5
+):
+    tsdf_vol = tsdf_vol.squeeze()
+
+    # smooth quality volume with a Gaussian
+    qual_vol = ndimage.gaussian_filter(
+        qual_vol, sigma=gaussian_filter_sigma, mode="nearest"
+    )
+
+    # mask out voxels too far away from the surface
+    outside_voxels = tsdf_vol > out_th
+    inside_voxels = np.logical_and(1e-3 < tsdf_vol, tsdf_vol < out_th)
+    valid_voxels = ndimage.morphology.binary_dilation(
+        outside_voxels, iterations=2, mask=np.logical_not(inside_voxels)
+    )
+    qual_vol[valid_voxels == False] = 0.0
+
+    # reject voxels with predicted widths that are too small or too large
+    qual_vol[np.logical_or(width_vol < min_width, width_vol > max_width)] = 0.0
+
+    return qual_vol, rot_vol, width_vol
+
+def process(
+    tsdf_vol,
+    qual_vol,
+    rot_vol,
+    width_vol,
+    gaussian_filter_sigma=1.0,
+    min_width=0.033,
+    max_width=0.233,
+    out_th=0.5
+):
+    ## check if tsdf_vol is a tuple
+    if isinstance(tsdf_vol, tuple):
+        if len(tsdf_vol) == 2:
+            tsdf_vol = tsdf_vol[0]
+    tsdf_vol = tsdf_vol.squeeze()
+    
+    qual_vol = ndimage.gaussian_filter(
+        qual_vol, sigma=gaussian_filter_sigma, mode="nearest"
+    )
+
+    # mask out voxels too far away from the surface
+    outside_voxels = tsdf_vol > out_th
+    inside_voxels = np.logical_and(1e-3 < tsdf_vol, tsdf_vol < out_th)
+    valid_voxels = ndimage.morphology.binary_dilation(
+        outside_voxels, iterations=2, mask=np.logical_not(inside_voxels)
+    )
+    # if qual_vol.shape == valid_voxels.shape:
+    qual_vol[valid_voxels == False] = 0.0
+    # else:
+        # valid_voxels_flat = valid_voxels.reshape(-1) 
+        # qual_vol[~valid_voxels_flat] = 0.0  
+
+    # reject voxels with predicted widths that are too small or too large
+    qual_vol[np.logical_or(width_vol < min_width, width_vol > max_width)] = 0.0
+    # qual_vol = np.where(
+    #     np.logical_or(width_vol < min_width, width_vol > max_width),
+    #     0.0,
+    #     qual_vol
+    # )
+
+    return qual_vol, rot_vol, width_vol
+
+
+def process_dexycb(
+    tsdf_vol,
+    qual_vol,
+    rot_vol,
+    width_vol,
+    gaussian_filter_sigma=1.0,
+    min_width=0.033,
+    max_width=0.233,
+    out_th=0.5
+):
+    ## check if tsdf_vol is a tuple
+    if isinstance(tsdf_vol, tuple):
+        if len(tsdf_vol) == 2:
+            tsdf_vol = tsdf_vol[0]
+    tsdf_vol = tsdf_vol.squeeze()
+    
+    qual_vol = ndimage.gaussian_filter(
+        qual_vol, sigma=gaussian_filter_sigma, mode="nearest"
+    )
+
+    outside_voxels = tsdf_vol > out_th
+    qual_vol[outside_voxels == False] = 0.0
+
+    # reject voxels with predicted widths that are too small or too large
+    qual_vol[np.logical_or(width_vol < min_width, width_vol > max_width)] = 0.0
+
+    return qual_vol, rot_vol, width_vol
+
+
+def select_vgn(qual_vol, rot_vol, width_vol, threshold=0.90, max_filter_size=4, force_detection=False):
+    best_only = False
+    qual_vol[qual_vol < LOW_TH] = 0.0
+    if force_detection and (qual_vol >= threshold).sum() == 0:
+        best_only = True
+    else:
+        # threshold on grasp quality
+        qual_vol[qual_vol < threshold] = 0.0
+
+    # non maximum suppression
+    max_vol = ndimage.maximum_filter(qual_vol, size=max_filter_size)
+    qual_vol = np.where(qual_vol == max_vol, qual_vol, 0.0)
+    mask = np.where(qual_vol, 1.0, 0.0)
+
+    # construct grasps
+    grasps, scores = [], []
+    for index in np.argwhere(mask):
+        grasp, score = select_index_vgn(qual_vol, rot_vol, width_vol, index)
+        grasps.append(grasp)
+        scores.append(score)
+
+    sorted_grasps = [grasps[i] for i in reversed(np.argsort(scores))]
+    sorted_scores = [scores[i] for i in reversed(np.argsort(scores))]
+
+    if best_only and len(sorted_grasps) > 0:
+        sorted_grasps = [sorted_grasps[0]]
+        sorted_scores = [sorted_scores[0]]
+
+    return sorted_grasps, sorted_scores
+
+
+def select(qual_vol, center_vol, rot_vol, width_vol, threshold=0.90, max_filter_size=4, force_detection=False):
+    best_only = False
+    qual_vol[qual_vol < LOW_TH] = 0.0
+    if force_detection and (qual_vol >= threshold).sum() == 0:
+        best_only = True
+    else:
+        # threshold on grasp quality
+        qual_vol[qual_vol < threshold] = 0.0
+
+    # non maximum suppression
+    max_vol = ndimage.maximum_filter(qual_vol, size=max_filter_size)
+    qual_vol = np.where(qual_vol == max_vol, qual_vol, 0.0)
+    mask = np.where(qual_vol, 1.0, 0.0)
+
+    # construct grasps
+    grasps, scores = [], []
+    for index in np.argwhere(mask):
+        grasp, score = select_index(qual_vol, center_vol, rot_vol, width_vol, index)
+        grasps.append(grasp)
+        scores.append(score)
+
+    sorted_grasps = [grasps[i] for i in reversed(np.argsort(scores))]
+    sorted_scores = [scores[i] for i in reversed(np.argsort(scores))]
+
+    if best_only and len(sorted_grasps) > 0:
+        sorted_grasps = [sorted_grasps[0]]
+        sorted_scores = [sorted_scores[0]]
+        
+    return sorted_grasps, sorted_scores
+
+def select_target(qual_vol, center_vol, rot_vol, width_vol, threshold=0.90, max_filter_size=4, force_detection=False):
+    max_vol = ndimage.maximum_filter(qual_vol, size=max_filter_size)
+    qual_vol = np.where(qual_vol == max_vol, qual_vol, 0.0)
+    mask = np.where(qual_vol, 1.0, 0.0)
+
+    # construct grasps
+    grasps, scores = [], []
+    for index in np.argwhere(mask):
+        grasp, score = select_index(qual_vol, center_vol, rot_vol, width_vol, index)
+        grasps.append(grasp)
+        scores.append(score)
+
+    sorted_grasps = [grasps[i] for i in reversed(np.argsort(scores))]
+    sorted_scores = [scores[i] for i in reversed(np.argsort(scores))]
+    sorted_grasps = [sorted_grasps[0]]
+    sorted_scores = [sorted_scores[0]]
+    
+    return sorted_grasps, sorted_scores
+
+def select_index(qual_vol, center_vol, rot_vol, width_vol, index):
+    i, j, k = index
+    score = qual_vol[i, j, k]
+    ori = Rotation.from_quat(rot_vol[i, j, k])
+    pos = center_vol[i, j, k].numpy()
+    width = width_vol[i, j, k]
+    return Grasp(Transform(ori, pos), width), score
+
+def select_index_vgn(qual_vol, rot_vol, width_vol, index):
+    i, j, k = index
+    score = qual_vol[i, j, k]
+    ori = Rotation.from_quat(rot_vol[:, i, j, k])
+    pos = np.array([i, j, k], dtype=np.float64)
+    width = width_vol[i, j, k]
+    return Grasp(Transform(ori, pos), width), score
+
+def find_target_mesh_from_scene(scene_meshes, target_mesh, threshold=10):
+    """
+    Find the mesh from the scene that best matches the target mesh
+    
+    Args:
+        scene_meshes: list[trimesh.Trimesh], all meshes in the scene
+        target_mesh: trimesh.Trimesh, target mesh
+        threshold: int, minimum overlap point count threshold, default is 10
+        
+    Returns:
+        target_idx: int, index of the target mesh in scene_meshes
+        overlap: int, maximum overlap point count
+    """
+    from vgn.ConvONets.utils.libmesh import check_mesh_contains
+    import numpy as np
+    
+    target_idx = -1
+    max_overlap = threshold  # Set a minimum threshold
+    
+    for i, mesh in enumerate(scene_meshes):
+        # Check overlap between each mesh and target mesh vertices
+        overlap = np.sum(check_mesh_contains(mesh, target_mesh.vertices))
+        
+        # Update maximum overlap count and corresponding mesh index
+        if overlap > max_overlap:
+            max_overlap = overlap
+            target_idx = i
+    
+    if target_idx == -1:
+        print('No mesh with sufficient match to target was found!')
+    else:
+        print(f'Target mesh found, index: {target_idx}, overlap points: {max_overlap}')
+    
+    return target_idx, max_overlap
