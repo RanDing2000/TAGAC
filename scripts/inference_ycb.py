@@ -6,11 +6,12 @@ import glob
 from datetime import datetime
 
 import numpy as np
-
 import sys
-sys.path = [
-    '../src/FGCGraspNet',
-] + sys.path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# import sys
+# sys.path = [
+#     '../src/FGCGraspNet',
+# ] + sys.path
 
 # Grasp planner modules 
 from src.vgn.detection import VGN
@@ -166,7 +167,7 @@ if __name__ == "__main__":
                         help="Optional experiment description.")
     parser.add_argument("--test_root", type=str,
                         default=None)
-    parser.add_argument("--model", type=Path, default='checkpoints/targonet.pt')
+    parser.add_argument("--model", type=Path, default='checkpoints/giga_packed.pt')
     parser.add_argument("--out_th", type=float, default=0.5,
                         help="Output threshold for valid grasps.")
     parser.add_argument("--scene", type=str, choices=["pile", "packed"], default="packed")
@@ -236,5 +237,4 @@ if __name__ == "__main__":
 
     # Automatically create a result path if none is provided
     if str(args.result_path) == "":
-        create_and_write_args_to_result_path(args)
-    main(args)
+        main(args)
