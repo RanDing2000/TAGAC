@@ -535,7 +535,10 @@ def record_occ_level_success(occ_level, occ_level_success_dict):
 def cal_occ_level_sr(occ_level_count_dict, occ_level_success_dict):
     occ_level_sr_dict = {}
     for key in occ_level_count_dict:
-        occ_level_sr_dict[key] = occ_level_success_dict[key] / occ_level_count_dict[key]
+        if occ_level_count_dict[key] == 0:
+            occ_level_sr_dict[key] = 0
+        else:
+            occ_level_sr_dict[key] = occ_level_success_dict[key] / occ_level_count_dict[key]
     return occ_level_sr_dict
 
 

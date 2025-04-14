@@ -49,6 +49,8 @@ def create_and_write_args_to_result_path(args):
         model_name = f'{args.type}'
     elif args.type in ("giga", "giga_aff", "vgn", "giga_hr"):
         model_name = f'{args.type}'
+    elif args.type == "FGC-GraspNet" or args.type == "AnyGrasp":
+        model_name = f'{args.type}'
     else:
         print("Unsupported type.")
         return
@@ -76,6 +78,7 @@ def create_and_write_args_to_result_path(args):
         result_file.write(args_content)
 
     print(f"Args saved to {result_initial_path}")
+    return result_file_path
 
 
 def find_and_assign_first_checkpoint(args):
@@ -122,7 +125,8 @@ def main(args):
         )
     else:
         raise NotImplementedError(f"Model type '{args.type}' is not implemented.")
-
+    result_path = create_and_write_args_to_result_path(args)
+    args.result_path = result_path
     # Only keep the target_sample_offline evaluation
     occ_level_sr = target_sample_offline_ycb.run(
         grasp_plan_fn=grasp_planner,

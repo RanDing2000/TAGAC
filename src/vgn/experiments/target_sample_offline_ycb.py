@@ -160,6 +160,8 @@ def run(
         #     continue
         path_to_npz = os.path.join(test_scenes, curr_mesh_pose_list)
         scene_name = curr_mesh_pose_list[:-4]
+        # if scene_name != 'adf4a92ec4694fd5b013b78a06cf5e34_c_1':
+        #     continue
         if scene_name not in occ_level_dict:
             # os.remove(os.path.join(test_mesh_pose_list, curr_mesh_pose_list))
             # os.remove(path_to_npz)
@@ -477,7 +479,8 @@ def run(
             #     logger.log_mesh(scene_mesh, visual_mesh, f'{occ_level}_occ_{scene_name}')
 
         # Optionally partial stats
-        if all(v > 0 for v in occ_level_count_dict.values()) and (num_id % 100 == 0):
+        # if all(v > 0 for v in occ_level_count_dict.values()) and (num_id % 100 == 0):
+        if num_id % 100 == 0:
             occ_level_sr = cal_occ_level_sr(occ_level_count_dict, occ_level_success_dict)
             curr_count = sum(occ_level_count_dict.values())
             intermediate_result_path = f'{result_path}/intermediate_result.txt'

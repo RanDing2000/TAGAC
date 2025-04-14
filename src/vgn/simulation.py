@@ -179,7 +179,7 @@ class ClutterRemovalSim(object):
         self.occ_level_dict = {}
         self.save_occ_level_dict = False
         if test_root is not None:
-            self.occ_level_dict_path = Path(test_root) / 'occ_level_dict.json'
+            self.occ_level_dict_path = Path(test_root) / 'test_set' / 'occ_level_dict.json'
             if not self.occ_level_dict_path.exists():
                 self.occ_level_dict = {}
                 self.save_occ_level_dict = True
