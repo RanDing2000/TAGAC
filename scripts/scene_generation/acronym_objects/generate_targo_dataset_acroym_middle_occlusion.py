@@ -22,9 +22,8 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 occ_level_scene_dict = {}
 occ_level_dict_count = {
-    "0-0.1": 0,
-    "0.1-0.2": 0,
-    "0.2-0.3": 0,
+    "0.3-0.4": 0,
+    "0.4-0.5": 0,
 }
 
 def duplicate_points(points, target_size):
@@ -310,12 +309,10 @@ def generate_scenes(sim):
         occ_level_c = 1 - count_cluttered[target_id] / count_single
 
         # Process scenes based on occlusion level
-        if 0.0 < occ_level_c < 0.1:
-            bin_key = "0-0.1"
-        elif 0.1 <= occ_level_c < 0.2:
-            bin_key = "0.1-0.2"
-        elif 0.2 <= occ_level_c < 0.3:
-            bin_key = "0.2-0.3"
+        if 0.3 <= occ_level_c < 0.4:
+            bin_key = "0.3-0.4"
+        elif 0.4 <= occ_level_c < 0.5:
+            bin_key = "0.4-0.5"
         else:
             sim.world.remove_body(target_body)
             continue
@@ -340,7 +337,7 @@ def generate_scenes(sim):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--root",type=Path, default= '/usr/stud/dira/GraspInClutter/targo/output/acronym/acronym-slight-occlusion-1000-v2')
+    parser.add_argument("--root",type=Path, default= '/usr/stud/dira/GraspInClutter/targo/data_scenes/acronym/acronym-middle-occlusion-1000-v2')
     parser.add_argument("--scene", type=str, choices=["pile", "packed"], default="packed")
     parser.add_argument("--object-set", type=str, default="packed/train")
     parser.add_argument("--num-grasps", type=int, default=10000)

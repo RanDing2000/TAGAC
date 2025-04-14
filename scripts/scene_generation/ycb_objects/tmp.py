@@ -1,4 +1,3 @@
-
 ## TODO target_id, target_body, mesh_pose_dict should be aligne
 import os
 import argparse
@@ -21,8 +20,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 occ_level_scene_dict = {}
 occ_level_dict_count = {
-    "0.3-0.4": 0,
-    "0.4-0.5": 0,
+    "0-0.1": 0,
 }
 
 def duplicate_points(points, target_size):
@@ -354,15 +352,16 @@ def generate_scenes(sim):
         occ_level_c = 1 - count_cluttered[target_id] / count_single
 
         # Only process scenes with occlusion level < 0.1
-        # Process scenes based on occlusion level
-        if 0.3 <= occ_level_c < 0.4:
-            bin_key = "0.3-0.4"
-        elif 0.4 <= occ_level_c < 0.5:
-            bin_key = "0.4-0.5"
+        if 0.0 < occ_level_c < 0.1:
+            bin_key = "0-0.1"
+        elif 0.1 <= occ_level_c < 0.2:
+            bin_key = "0.1-0.2"
+        elif 0.2 <= occ_level_c < 0.3:
+            bin_key = "0.2-0.3"
         else:
             sim.world.remove_body(target_body)
             continue
-
+            
         current_count = occ_level_dict_count[bin_key]
         if current_count >= MAX_BIN_COUNT:
             sim.world.remove_body(target_body)
@@ -376,13 +375,10 @@ def generate_scenes(sim):
         sim.world.remove_body(target_body)
         logger.info(f"scene {scene_id}, target '{target_body.name}' done")
 
-    logger.info(f"scene {scene_id} done")
-    return
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--root",type=Path, default= '/usr/stud/dira/GraspInClutter/targo/output/ycb/maniskill-ycb-v2-middle-occlusion-1000')
+    parser.add_argument("--root",type=Path, default= '/usr/stud/dira/GraspInClutter/targo/data_scenes/ycb/maniskill-ycb-v2-no-occlusion')
     parser.add_argument("--scene", type=str, choices=["pile", "packed"], default="packed")
     parser.add_argument("--object-set", type=str, default="packed/train")
     parser.add_argument("--num-grasps", type=int, default=10000)

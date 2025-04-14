@@ -37,7 +37,7 @@ data/models
 *.cuh
 *.pdf
 *.ply
-output/
+data_scenes/
 # src/*
 # !src/vgn/detection_implicit.py
 targo_eval_results/

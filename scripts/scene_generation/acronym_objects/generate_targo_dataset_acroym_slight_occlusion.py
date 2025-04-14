@@ -117,12 +117,8 @@ def process_and_store_scene_data(sim, scene_id, target_id, noisy_depth_side_c, s
     # Depth to point cloud conversions
     pc_scene_depth_side_c = depth_to_point_cloud(noisy_depth_side_c[0], mask_scene_side_c[0],
                                                  sim.camera.intrinsic.K, extr_side_c[0], 2048)
-    pc_scene_depth_side_c_no_specify = depth_to_point_cloud_no_specify(noisy_depth_side_c[0], mask_scene_side_c[0],
-                                                 sim.camera.intrinsic.K, extr_side_c[0])
     pc_targ_depth_side_c = depth_to_point_cloud(noisy_depth_side_c[0], mask_targ_side_c[0],
                                                 sim.camera.intrinsic.K, extr_side_c[0], 2048)
-    pc_targ_depth_side_c_no_specify = depth_to_point_cloud_no_specify(noisy_depth_side_c[0], mask_targ_side_c[0],
-                                                sim.camera.intrinsic.K, extr_side_c[0]) 
     pc_scene_no_targ_depth_side_c = remove_A_from_B(pc_targ_depth_side_c, pc_scene_depth_side_c)
 
     # Generate grids from depth data
@@ -141,10 +137,7 @@ def process_and_store_scene_data(sim, scene_id, target_id, noisy_depth_side_c, s
         mask_scene_side_c.astype(int), seg_side_c, grid_scene_side_c, grid_targ_side_c,
         pc_scene_depth_side_c, pc_targ_depth_side_c, pc_scene_no_targ_depth_side_c,
         np.asarray(pc_scene_side_c.points, dtype=np.float32),
-        np.asarray(pc_scene_depth_side_c_no_specify, dtype=np.float32),
-        np.asarray(pc_targ_side_c.points, dtype=np.float32), 
-        np.asarray(pc_targ_depth_side_c_no_specify, dtype=np.float32),
-        pc_scene_no_targ_side_c, occ_level_c
+        np.asarray(pc_targ_side_c.points, dtype=np.float32), pc_scene_no_targ_side_c, occ_level_c
     )
 
     return clutter_id
@@ -194,46 +187,6 @@ def depth_to_point_cloud(depth_img, mask_targ, intrinsics, extrinsics, num_point
     
     return points_transformed
 
-def depth_to_point_cloud_no_specify(depth_img, mask_targ, intrinsics, extrinsics):
-    """
-    Convert a masked and scaled depth image into a point cloud using camera intrinsics and inverse extrinsics.
-
-    Parameters:
-    - depth_img: A 2D numpy array containing depth for each pixel.
-    - mask_targ: A 2D boolean numpy array where True indicates the target.
-    - intrinsics: The camera intrinsic matrix as a 3x3 numpy array.
-    - extrinsics: The camera extrinsic matrix as a 4x4 numpy array. This function assumes the matrix is to be inversed for the transformation.
-    - scale: Scale factor to apply to the depth values.
-
-    Returns:
-    - A numpy array of shape (N, 3) containing the X, Y, Z coordinates of the points in the world coordinate system.
-    """
-    # Apply the target mask to the depth image, then apply the scale factor
-    depth_img_masked_scaled = depth_img * mask_targ
-    
-    # Get the dimensions of the depth image
-    height, width = depth_img_masked_scaled.shape
-    u, v = np.meshgrid(np.arange(width), np.arange(height))
-    # Flatten the arrays for vectorized operations
-    u, v = u.flatten(), v.flatten()
-    z = depth_img_masked_scaled.flatten()
-
-    # Convert pixel coordinates (u, v) and depth (z) to camera coordinates
-    x = (u - intrinsics[0, 2]) * z / intrinsics[0, 0]
-    y = (v - intrinsics[1, 2]) * z / intrinsics[1, 1]
-    
-    # Create normal coordinates in the camera frame
-    # points_camera_frame = np.array([x, y, z]).T
-    points_camera_frame = np.vstack((x, y, z)).T
-    points_camera_frame = points_camera_frame[z!=0]
-    # Convert the camera coordinates to world coordinate
-    # if point_cloud_path is None:
-    #     print('point_cloud_path is None')
-
-    extrinsic = Transform.from_list(extrinsics).inverse()
-    points_transformed = np.array([extrinsic.transform_point(p) for p in points_camera_frame])
-    
-    return points_transformed
 
 def render_side_images(sim, n=1, random=False, segmentation=False):
     height, width = sim.camera.intrinsic.height, sim.camera.intrinsic.width
@@ -356,17 +309,26 @@ def generate_scenes(sim):
         count_single = np.count_nonzero(seg_side_s[0] == target_body.uid)
         occ_level_c = 1 - count_cluttered[target_id] / count_single
 
-        # Only process scenes with occlusion level < 0.1
-        if occ_level_c == 0.0:
-            current_count = occ_level_dict_count["0-0.1"]
-            if current_count >= MAX_BIN_COUNT:
-                sim.world.remove_body(target_body)
-                continue
-            else:
-                if process_and_store_scene_data(sim, scene_id, target_id, noisy_depth_side_c, seg_side_c, extr_side_c, args, occ_level_c) != None:
-                    occ_level_dict_count["0-0.1"] += 1
-                    occ_level_scene_dict[scene_id + '_c_' + str(target_id)] = occ_level_c
-                    write_test_set_point_cloud(args.root, scene_id + f"_c_{target_id}", mesh_clutter_pose_dict, target_body.name, name="mesh_pose_dict")
+        # Process scenes based on occlusion level
+        if 0.0 < occ_level_c < 0.1:
+            bin_key = "0-0.1"
+        elif 0.1 <= occ_level_c < 0.2:
+            bin_key = "0.1-0.2"
+        elif 0.2 <= occ_level_c < 0.3:
+            bin_key = "0.2-0.3"
+        else:
+            sim.world.remove_body(target_body)
+            continue
+            
+        current_count = occ_level_dict_count[bin_key]
+        if current_count >= MAX_BIN_COUNT:
+            sim.world.remove_body(target_body)
+            continue
+        else:
+            if process_and_store_scene_data(sim, scene_id, target_id, noisy_depth_side_c, seg_side_c, extr_side_c, args, occ_level_c) != None:
+                occ_level_dict_count[bin_key] += 1
+                occ_level_scene_dict[scene_id + '_c_' + str(target_id)] = occ_level_c
+                write_test_set_point_cloud(args.root, scene_id + f"_c_{target_id}", mesh_clutter_pose_dict, target_body.name, name="mesh_pose_dict")
         
         sim.world.remove_body(target_body)
         logger.info(f"scene {scene_id}, target '{target_body.name}' done")
@@ -375,9 +337,10 @@ def generate_scenes(sim):
     return
 
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--root",type=Path, default= '/usr/stud/dira/GraspInClutter/targo/output/maniskill-acronym-v2-middle-occlusion-1000')
+    parser.add_argument("--root",type=Path, default= '/usr/stud/dira/GraspInClutter/targo/data_scenes/acronym/acronym-slight-occlusion-1000-v2')
     parser.add_argument("--scene", type=str, choices=["pile", "packed"], default="packed")
     parser.add_argument("--object-set", type=str, default="packed/train")
     parser.add_argument("--num-grasps", type=int, default=10000)

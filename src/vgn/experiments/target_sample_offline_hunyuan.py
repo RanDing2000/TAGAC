@@ -119,7 +119,7 @@ def run(
     skip_dict = {}
     scene_name_path = '/usr/stud/dira/GraspInClutter/Gen3DSR/scene_names.txt'
     scene_name_list = open(scene_name_path, 'r').readlines()
-    root_path = '/usr/stud/dira/GraspInClutter/Gen3DSR/output/test_set_gaussian_0.002'
+    root_path = '/usr/stud/dira/GraspInClutter/Gen3DSR/data_scenes/test_set_gaussian_0.002'
     gen3dsr_scene_name_list = [line.strip() for line in scene_name_list]
 
     # Loop over the test set
