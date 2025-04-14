@@ -15,8 +15,8 @@ from src.vgn.networks import load_network
 from src.vgn.utils import visual
 from src.utils_giga import *
 
-from src.utils_giga import tsdf_to_ply, point_cloud_to_tsdf, filter_grasps_by_target
-from src.utils_targo import tsdf_to_mesh
+from src.utils_giga import tsdf_to_ply, point_cloud_to_tsdf
+from src.utils_targo import tsdf_to_mesh, filter_grasps_by_target
 
 from src.shape_completion.config import cfg_from_yaml_file
 from src.shape_completion import builder
@@ -47,6 +47,87 @@ def get_grasps(net, end_points):
     gg = GraspGroup(gg_array)
     # if save the results, return gg_array
     return gg
+
+def vis_grasps_target(target_gg, target_cloud, scene_cloud, anygrasp=False, fgc=False):
+    # Process grasp group
+    target_gg.nms()
+    target_gg.sort_by_score()
+    target_gg = target_gg[:50]
+    grippers = target_gg.to_open3d_geometry_list()
+    
+    # Create colored point clouds
+    import open3d as o3d
+    import numpy as np
+    
+    # Set target cloud to red color
+    target_cloud_colored = o3d.geometry.PointCloud()
+    target_cloud_colored.points = target_cloud.points
+    target_cloud_colored.colors = o3d.utility.Vector3dVector(np.ones((len(target_cloud.points), 3)) * np.array([1, 0, 0]))  # Red color
+    
+    # Create occluder cloud by removing target points from scene cloud
+    # This is a simplified approach - in practice, you might need more sophisticated point filtering
+    target_points = np.asarray(target_cloud.points)
+    scene_points = np.asarray(scene_cloud.points)
+    
+    # Find points in scene_cloud that are not in target_cloud
+    # This is a simple approach that might be slow for large point clouds
+    occluder_points = []
+    for point in scene_points:
+        # Check if this point is in target_cloud (with some tolerance)
+        is_in_target = False
+        for target_point in target_points:
+            if np.linalg.norm(point - target_point) < 0.001:  # Small tolerance
+                is_in_target = True
+                break
+        if not is_in_target:
+            occluder_points.append(point)
+    
+    # Create occluder cloud with green color
+    occluder_cloud = o3d.geometry.PointCloud()
+    if occluder_points:
+        occluder_points = np.array(occluder_points)
+        occluder_cloud.points = o3d.utility.Vector3dVector(occluder_points)
+        occluder_cloud.colors = o3d.utility.Vector3dVector(np.ones((len(occluder_points), 3)) * np.array([0, 1, 0]))  # Green color
+    
+    # Determine output file names based on grasp type
+    prefix = 'demo/cloud'
+    if anygrasp:
+        prefix += '_anygrasp'
+    elif fgc:
+        prefix += '_fgc'
+    
+    # Save the colored point clouds to PLY files
+    o3d.io.write_point_cloud(f'{prefix}_target.ply', target_cloud_colored)
+    o3d.io.write_point_cloud(f'{prefix}_occluder.ply', occluder_cloud)
+    print(f'Point clouds saved to {prefix}_target.ply and {prefix}_occluder.ply')
+    
+    # Convert point clouds to trimesh
+    import trimesh
+    target_points = np.asarray(target_cloud_colored.points)
+    target_colors = np.asarray(target_cloud_colored.colors)
+    target_mesh = trimesh.points.PointCloud(target_points, colors=target_colors)
+    
+    occluder_points = np.asarray(occluder_cloud.points)
+    occluder_colors = np.asarray(occluder_cloud.colors)
+    occluder_mesh = trimesh.points.PointCloud(occluder_points, colors=occluder_colors)
+    
+    # Create a scene and add the point clouds
+    scene = trimesh.Scene()
+    scene.add_geometry(target_mesh)
+    scene.add_geometry(occluder_mesh)
+    
+    # Add all grippers to the scene
+    for gripper in grippers:
+        # Convert Open3D mesh to trimesh
+        vertices = np.asarray(gripper.vertices)
+        faces = np.asarray(gripper.triangles)
+        gripper_mesh = trimesh.Trimesh(vertices=vertices, faces=faces)
+        scene.add_geometry(gripper_mesh)
+    
+    # Export the scene
+    output_file = f'{prefix}_with_target_grasps.glb'
+    scene.export(output_file)
+    print(f'Scene saved to {output_file}')
 
 def vis_grasps(gg, cloud, anygrasp=False, fgc=False):
     gg.nms()
@@ -205,7 +286,29 @@ class VGNImplicit(object):
             scene_pc = state.scene_pc
             target_pc = state.target_pc
             print(scene_pc.shape, target_pc.shape)
-            target_gg =  filter_grasps_by_target(gg, target_pc)
+            print("target_pc")
+            print(target_pc)
+            print("target_pc.shape")
+            print(target_pc.shape)
+            
+            # Create target point cloud for visualization
+            target_pc_np = np.array(target_pc, dtype=np.float32)
+            target_pc_o3d = o3d.geometry.PointCloud()
+            target_pc_o3d.points = o3d.utility.Vector3dVector(target_pc_np)
+            target_pc_o3d.colors = o3d.utility.Vector3dVector(np.ones_like(target_pc_np))
+            
+            # Filter grasps by target
+            target_gg = filter_grasps_by_target(gg, target_pc_np)
+
+            scene_pc_np = np.array(scene_pc, dtype=np.float32)
+            scene_pc_o3d = o3d.geometry.PointCloud()
+            scene_pc_o3d.points = o3d.utility.Vector3dVector(scene_pc_np)
+            scene_pc_o3d.colors = o3d.utility.Vector3dVector(np.ones_like(scene_pc_np))
+            
+            # Visualize filtered grasps
+            # vis_grasps(target_gg, target_pc_o3d, fgc=True)
+            # vis_grasps_target(target_gg, target_pc_o3d, scene_pc_o3d, fgc=True) 
+            # print("visualized target grasps")
             # Convert scene_pc and target_pc to numpy arrays
             
             # Create open3d point cloud objects
@@ -223,13 +326,15 @@ class VGNImplicit(object):
             width_vol = width_vol.reshape((self.resolution, self.resolution, self.resolution))
 
         if state.type == 'FGC-GraspNet' or state.type == 'AnyGrasp':
-            grasp = gg[0]
+            max_score_idx = np.argmax(target_gg.scores)  # Convert numpy.int64 to Python int
+            # Get the best grasp using get_grasp method instead of indexing
+            best_grasp = target_gg[int(max_score_idx)]
             # Convert grasp from FGC-GraspNet/AnyGrasp format to VGN format
             # Extract grasp parameters
-            score = grasp.score
-            width = grasp.width
-            translation = grasp.translation
-            rotation_matrix = grasp.rotation_matrix
+            score = best_grasp.score
+            width = best_grasp.width
+            translation = best_grasp.translation
+            rotation_matrix = best_grasp.rotation_matrix
             
             # Create Transform object for grasp pose
             pose = Transform(
