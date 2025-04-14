@@ -135,6 +135,7 @@ class ClutterRemovalSim(object):
         save_freq=8,
         test_root=None,
         is_acronym=False,
+        egl_mode=False,
     ):
         # Only allow 'pile' or 'packed' scenes now
         assert scene in ["pile", "packed"]
@@ -165,7 +166,7 @@ class ClutterRemovalSim(object):
         self.sideview = sideview
 
         self.rng = np.random.RandomState(seed) if seed else np.random
-        self.world = btsim.BtWorld(self.gui, save_dir, save_freq)
+        self.world = btsim.BtWorld(self.gui, save_dir, save_freq, egl_mode)
         self.gripper = Gripper(self.world)
         if size:
             self.size = size
@@ -563,17 +564,43 @@ class ClutterRemovalSim(object):
             T_world_retreat = T_world_grasp * T_grasp_retreat
 
         self.gripper.reset(T_world_pregrasp)
+        
+        # 为视频录制捕获初始位置的几帧 - 减少帧数以提高速度
+        if hasattr(self.world, 'recording') and self.world.recording:
+            for _ in range(5):  # 从15减少到5
+                self.world.capture_frame()
 
         if self.gripper.detect_contact():
             result = Label.FAILURE, self.gripper.max_opening_width
             plan_failure = 1
         else:
+            # 移动到目标位置
             self.gripper.move_tcp_xyz(T_world_grasp, abort_on_contact=True)
+            
+            # 抓取前捕获几帧 - 减少帧数以提高速度
+            if hasattr(self.world, 'recording') and self.world.recording:
+                for _ in range(5):  # 从15减少到5
+                    self.world.capture_frame()
+                    
             if self.gripper.detect_contact() and not allow_contact:
                 result = Label.FAILURE, self.gripper.max_opening_width
             else:
+                # 闭合夹爪
                 self.gripper.move(0.0)
+                
+                # 夹爪闭合时捕获几帧 - 减少帧数以提高速度
+                if hasattr(self.world, 'recording') and self.world.recording:
+                    for _ in range(5):  # 从15减少到5
+                        self.world.capture_frame()
+                        
+                # 撤回夹爪
                 self.gripper.move_tcp_xyz(T_world_retreat, abort_on_contact=False)
+                
+                # 结束动作时捕获几帧 - 减少帧数以提高速度
+                if hasattr(self.world, 'recording') and self.world.recording:
+                    for _ in range(5):  # 从15减少到5
+                        self.world.capture_frame()
+                        
                 if not force_targ:
                     if self.check_success(self.gripper):
                         result = Label.SUCCESS, self.gripper.read()
@@ -592,6 +619,11 @@ class ClutterRemovalSim(object):
                     else:
                         result = Label.FAILURE, self.gripper.max_opening_width
                         visual_failure = 1
+
+        # 完成后再捕获几帧 - 减少帧数以提高速度
+        if hasattr(self.world, 'recording') and self.world.recording:
+            for _ in range(5):  # 从15减少到5
+                self.world.capture_frame()
 
         self.world.remove_body(self.gripper.body)
         if remove:
@@ -665,7 +697,7 @@ class ClutterRemovalSim(object):
 
     def start_video_recording(self, filename, video_path):
         """
-        Start recording a video of the simulation.
+        Start recording a video of the simulation using OpenCV.
         
         Args:
             filename (str): The name of the video file (without extension)
@@ -673,18 +705,10 @@ class ClutterRemovalSim(object):
             
         Returns:
             int: Log ID to be used when stopping the recording
-            
-        Note:
-            This method uses pybullet's built-in video recording functionality.
-            The video will be saved as an MP4 file.
         """
-        os.makedirs(video_path, exist_ok=True)
-        video_file = os.path.join(video_path, f"{filename}.mp4")
-        log_id = self.world.p.startStateLogging(
-            self.world.p.STATE_LOGGING_VIDEO_MP4, 
-            video_file
-        )
-        print(f"Started video recording: {video_file}")
+        # 使用BtWorld中的OpenCV录制方法
+        log_id = self.world.start_video_recording(filename, video_path)
+        print(f"开始OpenCV视频录制: {video_path}/{filename}.mp4")
         return log_id
     
     def stop_video_recording(self, log_id):
@@ -693,13 +717,10 @@ class ClutterRemovalSim(object):
         
         Args:
             log_id (int): The log ID returned by start_video_recording
-            
-        Note:
-            This method must be called after start_video_recording to properly
-            finalize the video file.
         """
-        self.world.p.stopStateLogging(log_id)
-        print("Video recording complete")
+        # 使用BtWorld中的OpenCV录制方法停止录制
+        self.world.stop_video_recording(log_id)
+        print("视频录制完成")
 
 
 class Gripper(object):
@@ -788,6 +809,9 @@ class Gripper(object):
             self.update_tcp_constraint(T_world_tcp)
             for _ in range(int(dur_step / self.world.dt)):
                 self.world.step()
+                # 捕获视频帧
+                if hasattr(self.world, 'recording') and self.world.recording:
+                    self.world.capture_frame()
             if abort_on_contact and self.detect_contact():
                 return
 
@@ -808,6 +832,9 @@ class Gripper(object):
         self.joint2.set_position(0.5 * width)
         for _ in range(int(0.5 / self.world.dt)):
             self.world.step()
+            # 捕获视频帧
+            if hasattr(self.world, 'recording') and self.world.recording:
+                self.world.capture_frame()
 
     def read(self):
         """

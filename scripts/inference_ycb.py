@@ -102,7 +102,7 @@ def main(args):
     """
     # Choose VGN or VGNImplicit depending on 'args.type'
     if args.type == 'vgn':
-        grasp_planner = VGN( # it's not used in this script
+        grasp_planner = VGN( # it's not used in this scrifpt
             args.model,
             args.type,
             best=args.best,

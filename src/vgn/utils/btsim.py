@@ -20,11 +20,26 @@ class BtWorld(object):
         sim_time: Virtual time elpased since the last simulation reset.
     """
 
-    def __init__(self, gui=True, save_dir=None, save_freq=8):
-        connection_mode = pybullet.GUI if gui else pybullet.DIRECT
-        self.p = bullet_client.BulletClient(connection_mode)
+    def __init__(self, gui=True, save_dir=None, save_freq=8, egl_mode=False):
+        if egl_mode:
+            # 直接使用带EGL的DIRECT模式
+            self.p = bullet_client.BulletClient(pybullet.DIRECT)
+            
+            # 先加载EGL插件
+            plugin_status = self.p.loadPlugin("eglRendererPlugin")
+            print(f"EGL渲染器加载状态: {plugin_status}")
+            
+            # 设置渲染参数
+            if plugin_status >= 0:
+                print("EGL渲染器加载成功")
+                # 可能需要按需配置其他EGL相关参数
+        else:
+            # 原来的连接方式
+            connection_mode = pybullet.GUI if gui else pybullet.DIRECT
+            self.p = bullet_client.BulletClient(connection_mode)
 
         self.gui = gui
+        self.egl_mode = egl_mode  # 保存EGL模式状态，用于后续逻辑
         self.dt = 1.0 / 240.0
         self.solver_iterations = 150
         self.save_dir = save_dir
@@ -122,6 +137,104 @@ class BtWorld(object):
 
     def close(self):
         self.p.disconnect()
+
+    def start_video_recording(self, filename, video_path):
+        """开始视频录制，使用OpenCV手动录制视频"""
+        import cv2
+        import numpy as np
+        
+        os.makedirs(video_path, exist_ok=True)
+        video_file = os.path.join(video_path, f"{filename}.mp4")
+        
+        # 降低视频分辨率以提高速度
+        self.width, self.height = 640, 480  # 降低分辨率
+        self.frames = []
+        self.video_file = video_file
+        self.recording = True
+        self.frame_count = 0  # 帧计数器，用于跳过部分帧
+        self.capture_interval = 3  # 每隔几步捕获一帧
+        
+        print(f"开始OpenCV视频录制: {video_file} (优化模式)")
+        return 1  # 返回虚拟ID
+    
+    def capture_frame(self):
+        """在模拟步进时捕获帧，使用帧间隔减少捕获频率"""
+        if not hasattr(self, 'recording') or not self.recording:
+            return
+        
+        # 使用间隔采样减少帧数量    
+        self.frame_count += 1
+        if self.frame_count % self.capture_interval != 0:
+            return
+            
+        # 设置相机视角
+        viewMatrix = self.p.computeViewMatrix(
+            cameraEyePosition=[0.5, -0.2, 0.5],
+            cameraTargetPosition=[0.15, 0.15, 0.15],
+            cameraUpVector=[0, 0, 1]
+        )
+        projectionMatrix = self.p.computeProjectionMatrixFOV(
+            fov=60, aspect=self.width/self.height, nearVal=0.1, farVal=100
+        )
+        
+        # 获取图像
+        img = self.p.getCameraImage(
+            self.width, self.height, viewMatrix, projectionMatrix,
+            renderer=self.p.ER_TINY_RENDERER  # 使用软件渲染器
+        )
+        
+        # 保存图像
+        import numpy as np
+        rgb_array = np.array(img[2], dtype=np.uint8).reshape(self.height, self.width, 4)
+        rgb_array = rgb_array[:, :, :3]  # 移除alpha通道
+        self.frames.append(rgb_array)
+    
+    def stop_video_recording(self, log_id):
+        """结束视频录制并生成视频文件，使用更高效的编码器"""
+        if not hasattr(self, 'recording') or not self.recording:
+            print("没有正在进行的录制")
+            return
+            
+        import cv2
+        
+        if len(self.frames) == 0:
+            print("警告：没有捕获到帧，视频为空")
+            return
+            
+        # 创建视频 - 使用H.264编码
+        try:
+            # 首先尝试使用H.264编码
+            fourcc = cv2.VideoWriter_fourcc(*'H264')
+            out = cv2.VideoWriter(self.video_file, fourcc, 30, (self.width, self.height))
+            
+            # 测试视频写入器是否正常工作
+            if not out.isOpened():
+                raise Exception("H264编码器不可用")
+                
+        except Exception as e:
+            print(f"H264编码器不可用: {e}，尝试使用MP4V...")
+            # 回退到MP4V编码
+            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+            out = cv2.VideoWriter(self.video_file, fourcc, 30, (self.width, self.height))
+        
+        # 缩减帧数以加快处理速度
+        total_frames = len(self.frames)
+        if total_frames > 150:  # 如果帧数过多，进一步缩减
+            step = max(1, total_frames // 150)
+            print(f"帧数过多({total_frames})，以步长{step}缩减帧数至约150帧")
+            selected_frames = self.frames[::step]
+        else:
+            selected_frames = self.frames
+            
+        print(f"处理{len(selected_frames)}帧...")
+        for frame in selected_frames:
+            out.write(cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
+        
+        out.release()
+        self.recording = False
+        self.frames = []
+        
+        print(f"视频录制完成: {self.video_file}")
 
 
 class Body(object):

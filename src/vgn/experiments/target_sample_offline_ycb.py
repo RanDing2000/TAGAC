@@ -108,7 +108,8 @@ def run(
         gui=sim_gui,
         add_noise=add_noise,
         sideview=sideview,
-        test_root=test_root
+        test_root=test_root,
+        egl_mode=False
     )
     logger = Logger(logdir, description, tgt_sample=True)
 
