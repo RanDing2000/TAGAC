@@ -340,6 +340,25 @@ class ClutterRemovalSim(object):
                 z = table_height + 0.5 * (upper[2] - lower[2]) + 0.002
                 body.set_pose(pose=Transform(rotation, np.r_[x, y, z]))
                 self.world.step()
+            elif is_ycb:
+                # Original method for non-Acronym objects
+                x = self.rng.uniform(0.08, 0.22)
+                y = self.rng.uniform(0.08, 0.22)
+                z = 1.0
+                angle = self.rng.uniform(0.0, 2.0 * np.pi)
+                rotation = Rotation.from_rotvec(angle * np.r_[0.0, 0.0, 1.0])
+                pose = Transform(rotation, np.r_[x, y, z])
+                
+                # scale = self.rng.uniform(0.7, 0.9)
+                scale = 1.0
+                body = self.world.load_urdf(
+                    urdf_file, pose, scale=self.global_scaling * scale
+                )
+                
+                lower, upper = self.world.p.getAABB(body.uid)
+                z = table_height + 0.5 * (upper[2] - lower[2]) + 0.002
+                body.set_pose(pose=Transform(rotation, np.r_[x, y, z]))
+                self.world.step()
             else:
                 # Original method for non-Acronym objects
                 x = self.rng.uniform(0.08, 0.22)
