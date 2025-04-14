@@ -18,6 +18,7 @@ import pathlib
 import random
 import trimesh
 import trimesh.transformations as tra
+import os
 
 class SceneObject:
     visual_fpath: pathlib.Path
@@ -661,6 +662,44 @@ class ClutterRemovalSim(object):
         contacts = self.world.get_contacts_valid(gripper.body, tgt_id)
         res = len(contacts) > 0 and gripper.read() > 0.1 * gripper.max_opening_width
         return res
+
+    def start_video_recording(self, filename, video_path):
+        """
+        Start recording a video of the simulation.
+        
+        Args:
+            filename (str): The name of the video file (without extension)
+            video_path (str): Path to the directory where the video will be saved
+            
+        Returns:
+            int: Log ID to be used when stopping the recording
+            
+        Note:
+            This method uses pybullet's built-in video recording functionality.
+            The video will be saved as an MP4 file.
+        """
+        os.makedirs(video_path, exist_ok=True)
+        video_file = os.path.join(video_path, f"{filename}.mp4")
+        log_id = self.world.p.startStateLogging(
+            self.world.p.STATE_LOGGING_VIDEO_MP4, 
+            video_file
+        )
+        print(f"Started video recording: {video_file}")
+        return log_id
+    
+    def stop_video_recording(self, log_id):
+        """
+        Stop an active video recording.
+        
+        Args:
+            log_id (int): The log ID returned by start_video_recording
+            
+        Note:
+            This method must be called after start_video_recording to properly
+            finalize the video file.
+        """
+        self.world.p.stopStateLogging(log_id)
+        print("Video recording complete")
 
 
 class Gripper(object):

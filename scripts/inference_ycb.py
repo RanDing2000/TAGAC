@@ -201,9 +201,9 @@ if __name__ == "__main__":
         if args.logdir is None:
             args.logdir = Path('targo_eval_results/ycb/eval_results_full-middle-occlusion')
         if args.test_root is None:
-            args.test_root = 'data_scenes/maniskill-ycb-v2-middle-occlusion-1000'
+            args.test_root = 'data_scenes/ycb/maniskill-ycb-v2-middle-occlusion-1000'
         if args.occ_level_dict is None:
-            args.occ_level_dict = 'data_scenes/maniskill-ycb-v2-middle-occlusion-1000/test_set/occ_level_dict.json'
+            args.occ_level_dict = 'data_scenes/ycb/maniskill-ycb-v2-middle-occlusion-1000/test_set/occ_level_dict.json'
     elif args.occlusion_level == "slight":
         if args.hunyun2_path is None:
             args.hunyun2_path = '/usr/stud/dira/GraspInClutter/Gen3DSR/output_amodal/ycb_amodal_slight_occlusion_icp_v7_only_gt_1000'
@@ -212,9 +212,9 @@ if __name__ == "__main__":
         if args.logdir is None:
             args.logdir = Path('targo_eval_results/ycb/eval_results_full-slight-occlusion')
         if args.test_root is None:
-            args.test_root = 'data_scenes/maniskill-ycb-v2-slight-occlusion-1000'
+            args.test_root = 'data_scenes/ycb/maniskill-ycb-v2-slight-occlusion-1000'
         if args.occ_level_dict is None:
-            args.occ_level_dict = 'data_scenes/maniskill-ycb-v2-slight-occlusion-1000/test_set/occ_level_dict.json'
+            args.occ_level_dict = 'data_scenes/ycb/maniskill-ycb-v2-slight-occlusion-1000/test_set/occ_level_dict.json'
     elif args.occlusion_level == "no":
         if args.hunyun2_path is None:
             args.hunyun2_path = '/usr/stud/dira/GraspInClutter/Gen3DSR/output_amodal/work/ycb_amodal_no_occlusion_icp_v7_only_gt_1000'
@@ -223,9 +223,9 @@ if __name__ == "__main__":
         if args.logdir is None:
             args.logdir = Path('targo_eval_results/ycb/eval_results_full-no-occlusion')
         if args.test_root is None:
-            args.test_root = 'data_scenes/maniskill-ycb-v2-no-occlusion-1000'
+            args.test_root = 'data_scenes/ycb/maniskill-ycb-v2-no-occlusion-1000'
         if args.occ_level_dict is None:
-            args.occ_level_dict = 'data_scenes/maniskill-ycb-v2-no-occlusion-1000/test_set/occ_level_dict.json'
+            args.occ_level_dict = 'data_scenes/ycb/maniskill-ycb-v2-no-occlusion-1000/test_set/occ_level_dict.json'
 
     # Removed unnecessary parameters:
     # --num-objects, --num-view, --num-rounds, --add-noise, --silence

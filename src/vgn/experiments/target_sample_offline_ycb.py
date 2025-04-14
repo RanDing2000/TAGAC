@@ -397,12 +397,46 @@ def run(
         grasp.width = sim.gripper.max_opening_width
 
         # Execute grasp in simulation
-        label, plan_fail, visual_fail = sim.execute_grasp(
-            grasp,
-            allow_contact=True,
-            tgt_id=tgt_id,
-            force_targ=True
-        )
+        ## TODO: start video recording
+        video_recording = True
+        if not video_recording:
+            label, plan_fail, visual_fail = sim.execute_grasp(
+                grasp,
+                allow_contact=True,
+                tgt_id=tgt_id,
+                force_targ=True
+            )
+        log_id = None
+        if video_recording:
+            # Create video save path
+            video_path = "/usr/stud/dira/GraspInClutter/targo/demo/grasping_videos"
+            # Create unique video filename for each scene
+            video_filename = f"{scene_name}_c_{tgt_id}"
+            # Full path to the video file
+            video_file = os.path.join(video_path, f"{video_filename}.mp4")
+            
+            # Create directory if it doesn't exist
+            os.makedirs(video_path, exist_ok=True)
+            
+            # Start video recording
+            log_id = sim.start_video_recording(video_filename, video_path)
+            
+            # Execute grasp
+            label, plan_fail, visual_fail = sim.execute_grasp(
+                grasp,
+                allow_contact=True,
+                tgt_id=tgt_id,
+                force_targ=True
+            )
+            
+            # Stop video recording
+            sim.stop_video_recording(log_id)
+            
+            # Check if video file exists
+            if os.path.exists(video_file):
+                print(f"Grasp video successfully saved to: {video_file}")
+            else:
+                print(f"Warning: Video recording failed. File not found at: {video_file}")
         if plan_fail == 1:
             plan_failure_count += 1
         if visual_fail == 1:
