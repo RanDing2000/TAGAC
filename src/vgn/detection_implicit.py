@@ -326,6 +326,12 @@ class VGNImplicit(object):
             width_vol = width_vol.reshape((self.resolution, self.resolution, self.resolution))
 
         if state.type == 'FGC-GraspNet' or state.type == 'AnyGrasp':
+            # Check if there are valid grasps
+            if len(target_gg) == 0 or np.max(target_gg.scores) < 0.0:
+                print(f"Warning: {state.type} did not find valid target grasps")
+                # Return empty lists instead of raising an error
+                return [], [], 0, 0, 0
+                
             max_score_idx = np.argmax(target_gg.scores)  # Convert numpy.int64 to Python int
             # Get the best grasp using get_grasp method instead of indexing
             best_grasp = target_gg[int(max_score_idx)]
@@ -349,7 +355,7 @@ class VGNImplicit(object):
             # Add to result lists
             grasps.append(vgn_grasp)
             scores.append(score)
-            return grasps, scores, 0,0,0
+            return grasps, scores, 0, 0, 0
         
         if state.type == 'targo' or state.type == 'targo_full_targ' or state.type == 'targo_hunyun2':
             # Handle both numpy array and tensor inputs
@@ -642,7 +648,6 @@ def predict(inputs, pos, net, sc_net, type, device, visual_dict=None, hunyun2_pa
             # target_mesh_gt.export('target_mesh_gt.ply')
             scene_meshes = scene_mesh.split()
             
-            # 添加错误处理，防止场景中没有找到匹配目标的网格
             # cd, iou = None, None
             cd, iou = 1, 0
             try:
@@ -915,3 +920,60 @@ def find_target_mesh_from_scene(scene_meshes, target_mesh, threshold=10):
         print(f'Target mesh found, index: {target_idx}, overlap points: {max_overlap}')
     
     return target_idx, max_overlap
+
+def filter_grasps_by_target(gg, target_pc):
+    """Filter grasps by target point cloud.
+    
+    Args:
+        gg: GraspGroup from FGC-GraspNet or AnyGrasp
+        target_pc: target point cloud, in the same coordinate system as the scene point cloud
+        
+    Returns:
+        target_gg: GraspGroup with only grasps on the target
+    """
+    # Ensure there are grasps to filter
+    if gg is None or len(gg) == 0:
+        print("Warning: No grasps to filter")
+        # Return an empty GraspGroup
+        return GraspGroup()
+        
+    # Get grasp contact points
+    grasp_points = gg.translations
+    
+    # Create a KDTree for target PC
+    import open3d as o3d
+    # target_o3d = o3d.geometry.PointCloud()
+    # target_o3d.points = o3d.utility.Vector3dVector(target_pc)
+    # target_o3d_tree = o3d.geometry.KDTreeFlann(target_o3d)
+    
+    # Alternative: use scipy KDTree
+    from scipy.spatial import KDTree
+    target_tree = KDTree(target_pc)
+    
+    # Filter grasps: keep those close to target PC
+    target_indices = []
+    target_scores = []
+    threshold = 0.02  # 2cm threshold for considering a grasp on the target
+    
+    # Get distances to nearest target points
+    distances, _ = target_tree.query(grasp_points, k=1)
+    
+    # Print distances for debugging
+    print(f"Total grasps: {len(gg)}")
+    if len(distances) > 0:
+        print(f"Min distance: {distances.min():.4f}")
+        print(f"Max distance: {distances.max():.4f}")
+    
+    # Get indices where distance is below threshold
+    target_indices = np.where(distances < threshold)[0]
+    
+    # If no grasps are close enough to target, return empty GraspGroup
+    if len(target_indices) == 0:
+        print("Warning: No grasps close to target object")
+        return GraspGroup()
+    
+    # Create new GraspGroup with filtered grasps
+    target_gg = gg[target_indices.tolist()]
+    print(f"Valid grasps: {len(target_gg)}")
+    
+    return target_gg

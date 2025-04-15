@@ -99,7 +99,8 @@ def run(
     test_root=None,
     occ_level_dict_path=None,
     model_type=None,
-    hunyun2_path=None, 
+    hunyun2_path=None,
+    video_recording=True, 
 ):
  
     # Initialize the simulation
@@ -378,6 +379,28 @@ def run(
         total_times.append(timings["planning"] + timings["integration"])
 
         if len(grasps) == 0:
+            # When no valid grasp found, record as failure instead of skipping
+            print(f"No valid grasp found, recording as failure: {scene_name}")
+            
+            # Set failure state
+            label = Label.FAILURE
+            plan_fail = 1
+            visual_fail = 0
+            
+            # Update records
+            count_label_dict[scene_name] = (int(label), len(occluder_heights), occ_level)
+            height_label_dict[scene_name] = (int(label), relative_height, occ_level)
+            tgt_bbx_label_dict[scene_name] = (int(label), length, width, height, occ_level)
+            targ_name_label[targ_name] = int(label)
+            
+            # Update failure count
+            plan_failure_count += 1
+            
+            # Update scene metrics
+            if scene_name in scene_metrics:
+                scene_metrics[scene_name]["success"] = 0
+                
+            # Continue to next scene
             continue
 
         grasp, score = grasps[0], scores[0]
@@ -399,31 +422,57 @@ def run(
 
         # Execute grasp in simulation
         ## TODO: start video recording
-        video_recording = True
-        if not video_recording:
+        log_id = None
+        if video_recording:
+            # Create a video save path based on result_path and target object name
+            video_path = os.path.join(result_path, f"grasping_videos/{targ_name}")
+            
+            # Create directory if it doesn't exist
+            os.makedirs(video_path, exist_ok=True)
+            
+            # Execute grasp first (without recording) to determine success/failure
+            sim.save_state()  # Save state before execution
             label, plan_fail, visual_fail = sim.execute_grasp(
                 grasp,
                 allow_contact=True,
                 tgt_id=tgt_id,
                 force_targ=True
             )
-        log_id = None
-        if video_recording:
-            # Create video save path
-            video_path = "/usr/stud/dira/GraspInClutter/targo/demo/grasping_videos"
-            # Create unique video filename for each scene
-            video_filename = f"{scene_name}_c_{tgt_id}"
+            
+            # Reset simulator for recording (recreate the scene rather than restoring state)
+            sim.world.reset()
+            sim.world.set_gravity([0.0, 0.0, -9.81])
+            sim.draw_workspace()
+            
+            # Recreate scene by loading URDF files again
+            for obj_id, mesh_info in enumerate(mp_data.item().values()):
+                pose = Transform.from_matrix(mesh_info[2])
+                if mesh_info[0].split('/')[-1] == 'plane.obj':
+                    urdf_path = mesh_info[0].replace(".obj", ".urdf")
+                else:
+                    urdf_path = mesh_info[0].replace("_textured.obj", ".urdf")
+
+                body = sim.world.load_urdf(
+                    urdf_path=urdf_path,
+                    pose=pose,
+                    scale=mesh_info[1]
+                )
+                
+                # Color target red
+                if obj_id == tgt_id:
+                    body.set_color(link_index=-1, rgba_color=(1.0, 0.0, 0.0, 1.0))
+            
+            # Create unique video filename with success/failure indicator
+            video_filename = f"{'success' if label != Label.FAILURE else 'failure'}_{scene_name}"
+            
             # Full path to the video file
             video_file = os.path.join(video_path, f"{video_filename}.mp4")
             
-            # Create directory if it doesn't exist
-            os.makedirs(video_path, exist_ok=True)
-            
-            # Start video recording
+            # Start recording
             log_id = sim.start_video_recording(video_filename, video_path)
             
-            # Execute grasp
-            label, plan_fail, visual_fail = sim.execute_grasp(
+            # Execute grasp again for recording (result doesn't matter for recording)
+            _, _, _ = sim.execute_grasp(
                 grasp,
                 allow_contact=True,
                 tgt_id=tgt_id,
@@ -438,6 +487,13 @@ def run(
                 print(f"Grasp video successfully saved to: {video_file}")
             else:
                 print(f"Warning: Video recording failed. File not found at: {video_file}")
+        else:
+            label, plan_fail, visual_fail = sim.execute_grasp(
+                grasp,
+                allow_contact=True,
+                tgt_id=tgt_id,
+                force_targ=True
+            )
         if plan_fail == 1:
             plan_failure_count += 1
         if visual_fail == 1:
@@ -471,7 +527,7 @@ def run(
         #         'occlusion': float(occ_level * 100),  # Convert float32 to Python float
         #     }
 
-        #     # 保存到meta_data_path
+        #     # Save to meta_data_path
         #     with open(metadata_path, 'w') as f:
         #         json.dump(meta, f)
 
@@ -542,13 +598,13 @@ def run(
             occ_level = metrics["occlusion_level"]
             iou = metrics["iou"]
             cd = metrics["cd"]
-            success = metrics.get("success", 0)  # 如果"success"没有的话，设置成0
+            success = metrics.get("success", 0)  # Default to 0 if "success" key doesn't exist
             
             f.write(f"{scene_name}, {target_name}, {occ_level:.4f}, {iou:.6f}, {cd:.6f}, {success}\n")
             avg_cd += cd
             avg_iou += iou
             
-            # 计算成功次数
+            # Count successful grasps
             if success == 1:
                 success_count += 1
         
@@ -562,7 +618,7 @@ def run(
             f.write(f"Total scenes evaluated: {total_scenes}\n")
             f.write(f"Successful grasps: {success_count}\n")
         else:
-            # 如果没有场景数据，写入提示信息
+            # If no scene data available, write a message
             f.write("\nNo scene metrics available. Check if model evaluation is correctly configured.\n")
 
     # Possibly save updated occlusion dictionary

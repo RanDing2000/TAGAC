@@ -4,6 +4,7 @@ from pathlib import Path
 import os
 import glob
 from datetime import datetime
+import subprocess
 
 import numpy as np
 import sys
@@ -144,17 +145,31 @@ def main(args):
         occ_level_dict_path=args.occ_level_dict,
         hunyun2_path=args.hunyun2_path,
         model_type=args.type,
+        video_recording=args.video_recording,
     )
 
     # Save the result to a JSON file
     with open('occ_level_sr.json', 'w') as f:
         json.dump(occ_level_sr, f, indent=2)
+    
+    # Run category analysis after the test is completed
+    if os.path.exists(f"{args.result_path}/meta_evaluations.txt"):
+        print("\n====== Running category analysis ======")
+        analysis_cmd = [
+            "python", 
+            "targo_eval_results/stastics_analysis/analyze_category.py", 
+            "--eval_file", f"{args.result_path}/meta_evaluations.txt",
+            "--output_dir", args.result_path
+        ]
+        print(f"Executing: {' '.join(analysis_cmd)}")
+        subprocess.run(analysis_cmd)
+        print("====== Category analysis completed ======\n")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--type", default="FGC-GraspNet",
+    parser.add_argument("--type", default="giga",
                         choices=["giga", "vgn", "targo", "targo_full_targ", "targo_hunyun2", "FGC-GraspNet", "AnyGrasp"],
                         help="Model type: giga_hr | giga_aff | giga | vgn | targo | targo_full_targ | targo_hunyun2 | FGC-GraspNet | AnyGrasp")
     parser.add_argument("--occlusion-level", type=str, choices=["no", "slight", "medium"], default="no",
@@ -189,6 +204,8 @@ if __name__ == "__main__":
                         help="Capture the scene from one side rather than top-down.")
     parser.add_argument("--vis", action="store_true", default=False,
                         help="Whether to visualize and save the affordance map.")
+    parser.add_argument("--video-recording", type=str2bool, default=True,
+                        help="Whether to record videos of grasping attempts.")
     
     args = parser.parse_args()
     

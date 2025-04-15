@@ -565,40 +565,40 @@ class ClutterRemovalSim(object):
 
         self.gripper.reset(T_world_pregrasp)
         
-        # 为视频录制捕获初始位置的几帧 - 减少帧数以提高速度
+        # For video recording, capture some frames at initial position
         if hasattr(self.world, 'recording') and self.world.recording:
-            for _ in range(5):  # 从15减少到5
+            for _ in range(10):  # Capture more frames at the start for better visualization
                 self.world.capture_frame()
 
         if self.gripper.detect_contact():
             result = Label.FAILURE, self.gripper.max_opening_width
             plan_failure = 1
         else:
-            # 移动到目标位置
+            # Move to target position
             self.gripper.move_tcp_xyz(T_world_grasp, abort_on_contact=True)
             
-            # 抓取前捕获几帧 - 减少帧数以提高速度
+            # Capture frames before closing the gripper
             if hasattr(self.world, 'recording') and self.world.recording:
-                for _ in range(5):  # 从15减少到5
+                for _ in range(10):  # More frames for better visualization
                     self.world.capture_frame()
                     
             if self.gripper.detect_contact() and not allow_contact:
                 result = Label.FAILURE, self.gripper.max_opening_width
             else:
-                # 闭合夹爪
+                # Close the gripper
                 self.gripper.move(0.0)
                 
-                # 夹爪闭合时捕获几帧 - 减少帧数以提高速度
+                # Capture frames after closing the gripper
                 if hasattr(self.world, 'recording') and self.world.recording:
-                    for _ in range(5):  # 从15减少到5
+                    for _ in range(10):  # More frames for better visualization
                         self.world.capture_frame()
                         
-                # 撤回夹爪
+                # Retreat gripper
                 self.gripper.move_tcp_xyz(T_world_retreat, abort_on_contact=False)
                 
-                # 结束动作时捕获几帧 - 减少帧数以提高速度
+                # Capture frames after retreating
                 if hasattr(self.world, 'recording') and self.world.recording:
-                    for _ in range(5):  # 从15减少到5
+                    for _ in range(10):  # More frames for better visualization
                         self.world.capture_frame()
                         
                 if not force_targ:
@@ -620,9 +620,9 @@ class ClutterRemovalSim(object):
                         result = Label.FAILURE, self.gripper.max_opening_width
                         visual_failure = 1
 
-        # 完成后再捕获几帧 - 减少帧数以提高速度
+        # Capture some final frames
         if hasattr(self.world, 'recording') and self.world.recording:
-            for _ in range(5):  # 从15减少到5
+            for _ in range(10):  # More frames at the end for better visualization
                 self.world.capture_frame()
 
         self.world.remove_body(self.gripper.body)
@@ -706,9 +706,9 @@ class ClutterRemovalSim(object):
         Returns:
             int: Log ID to be used when stopping the recording
         """
-        # 使用BtWorld中的OpenCV录制方法
+        # Use BtWorld's OpenCV recording method
         log_id = self.world.start_video_recording(filename, video_path)
-        print(f"开始OpenCV视频录制: {video_path}/{filename}.mp4")
+        print(f"Starting OpenCV video recording: {video_path}/{filename}.mp4")
         return log_id
     
     def stop_video_recording(self, log_id):
@@ -718,9 +718,9 @@ class ClutterRemovalSim(object):
         Args:
             log_id (int): The log ID returned by start_video_recording
         """
-        # 使用BtWorld中的OpenCV录制方法停止录制
+        # Use BtWorld's OpenCV recording method to stop recording
         self.world.stop_video_recording(log_id)
-        print("视频录制完成")
+        print("Video recording completed")
 
 
 class Gripper(object):
@@ -809,7 +809,7 @@ class Gripper(object):
             self.update_tcp_constraint(T_world_tcp)
             for _ in range(int(dur_step / self.world.dt)):
                 self.world.step()
-                # 捕获视频帧
+                # Capture video frame
                 if hasattr(self.world, 'recording') and self.world.recording:
                     self.world.capture_frame()
             if abort_on_contact and self.detect_contact():
@@ -830,9 +830,13 @@ class Gripper(object):
         """
         self.joint1.set_position(0.5 * width)
         self.joint2.set_position(0.5 * width)
-        for _ in range(int(0.5 / self.world.dt)):
+        
+        # Take more steps for smoother video when recording
+        steps = 12 if hasattr(self.world, 'recording') and self.world.recording else int(0.5 / self.world.dt)
+        
+        for _ in range(steps):
             self.world.step()
-            # 捕获视频帧
+            # Capture video frame
             if hasattr(self.world, 'recording') and self.world.recording:
                 self.world.capture_frame()
 
