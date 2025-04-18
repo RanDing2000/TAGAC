@@ -83,6 +83,26 @@ def init_occ_level_success_dict():
     }
 
 
+def read_target_names_from_file(target_file_path):
+    """
+    Read target names list from a specified txt file
+    
+    Args:
+        target_file_path (str): Path to the txt file
+        
+    Returns:
+        list: List of target names, returns empty list if file doesn't exist
+    """
+    target_names = []
+    if target_file_path and os.path.exists(target_file_path):
+        with open(target_file_path, 'r') as f:
+            for line in f:
+                name = line.strip()
+                if name:  # Ensure empty lines are not added
+                    target_names.append(name)
+    return target_names
+
+
 def run(
     grasp_plan_fn,
     logdir,
@@ -100,7 +120,8 @@ def run(
     occ_level_dict_path=None,
     model_type=None,
     hunyun2_path=None,
-    video_recording=True, 
+    video_recording=True,
+    target_file_path=None,  
 ):
  
     # Initialize the simulation
@@ -366,13 +387,13 @@ def run(
                 "cd": float(cd),
                 "iou": float(iou)
             }
-        else:
-            grasps, scores, timings["planning"] = grasp_plan_fn(state, scene_mesh, target_mesh_gt=target_mesh_gt)
+        elif model_type == 'vgn':
+            grasps, scores, timings["planning"] = grasp_plan_fn(state, scene_mesh)
             scene_metrics[scene_name] = {
                 "target_name": targ_name,
                 "occlusion_level": float(occ_level),
-                "cd": 'N/A',
-                "iou": 'N/A'
+                "cd": '0',
+                "iou": '0'
             }   
 
         planning_times.append(timings["planning"])
@@ -424,69 +445,87 @@ def run(
         ## TODO: start video recording
         log_id = None
         if video_recording:
-            # Create a video save path based on result_path and target object name
-            video_path = os.path.join(result_path, f"grasping_videos/{targ_name}")
+            # If target file path is provided, read the list of target names
+            target_names_to_record = []
+            if target_file_path:
+                target_names_to_record = read_target_names_from_file(target_file_path)
+                print(f"Read {len(target_names_to_record)} target names for video recording")
             
-            # Create directory if it doesn't exist
-            os.makedirs(video_path, exist_ok=True)
+            # Check if current target should be recorded
+            should_record = not target_names_to_record or targ_name in target_names_to_record
             
-            # Execute grasp first (without recording) to determine success/failure
-            sim.save_state()  # Save state before execution
-            label, plan_fail, visual_fail = sim.execute_grasp(
-                grasp,
-                allow_contact=True,
-                tgt_id=tgt_id,
-                force_targ=True
-            )
-            
-            # Reset simulator for recording (recreate the scene rather than restoring state)
-            sim.world.reset()
-            sim.world.set_gravity([0.0, 0.0, -9.81])
-            sim.draw_workspace()
-            
-            # Recreate scene by loading URDF files again
-            for obj_id, mesh_info in enumerate(mp_data.item().values()):
-                pose = Transform.from_matrix(mesh_info[2])
-                if mesh_info[0].split('/')[-1] == 'plane.obj':
-                    urdf_path = mesh_info[0].replace(".obj", ".urdf")
-                else:
-                    urdf_path = mesh_info[0].replace("_textured.obj", ".urdf")
-
-                body = sim.world.load_urdf(
-                    urdf_path=urdf_path,
-                    pose=pose,
-                    scale=mesh_info[1]
+            if should_record:
+                # Create video save path
+                video_path = os.path.join(result_path, f"grasping_videos/{targ_name}")
+                
+                # Create directory if it doesn't exist
+                os.makedirs(video_path, exist_ok=True)
+                
+                # First execute grasp (without recording) to determine success/failure
+                sim.save_state()  # Save state for later restoration
+                label, plan_fail, visual_fail = sim.execute_grasp(
+                    grasp,
+                    allow_contact=True,
+                    tgt_id=tgt_id,
+                    force_targ=True
                 )
                 
-                # Color target red
-                if obj_id == tgt_id:
-                    body.set_color(link_index=-1, rgba_color=(1.0, 0.0, 0.0, 1.0))
-            
-            # Create unique video filename with success/failure indicator
-            video_filename = f"{'success' if label != Label.FAILURE else 'failure'}_{scene_name}"
-            
-            # Full path to the video file
-            video_file = os.path.join(video_path, f"{video_filename}.mp4")
-            
-            # Start recording
-            log_id = sim.start_video_recording(video_filename, video_path)
-            
-            # Execute grasp again for recording (result doesn't matter for recording)
-            _, _, _ = sim.execute_grasp(
-                grasp,
-                allow_contact=True,
-                tgt_id=tgt_id,
-                force_targ=True
-            )
-            
-            # Stop video recording
-            sim.stop_video_recording(log_id)
-            
-            # Check if video file exists
-            if os.path.exists(video_file):
-                print(f"Grasp video successfully saved to: {video_file}")
+                # Reset the simulator for recording (recreate the scene instead of restoring state)
+                sim.world.reset()
+                sim.world.set_gravity([0.0, 0.0, -9.81])
+                sim.draw_workspace()
+                
+                # Recreate the scene by loading URDF files again
+                for obj_id, mesh_info in enumerate(mp_data.item().values()):
+                    pose = Transform.from_matrix(mesh_info[2])
+                    if mesh_info[0].split('/')[-1] == 'plane.obj':
+                        urdf_path = mesh_info[0].replace(".obj", ".urdf")
+                    else:
+                        urdf_path = mesh_info[0].replace("_textured.obj", ".urdf")
+
+                    body = sim.world.load_urdf(
+                        urdf_path=urdf_path,
+                        pose=pose,
+                        scale=mesh_info[1]
+                    )
+                    
+                    # Mark the target object as red
+                    if obj_id == tgt_id:
+                        body.set_color(link_index=-1, rgba_color=(1.0, 0.0, 0.0, 1.0))
+                
+                # Create unique video filename with success/failure identifier
+                video_filename = f"{'success' if label != Label.FAILURE else 'failure'}_{scene_name}"
+                
+                # Full path for the video file
+                video_file = os.path.join(video_path, f"{video_filename}.mp4")
+                
+                # Start recording
+                log_id = sim.start_video_recording(video_filename, video_path)
+                
+                # Execute grasp again for recording (result doesn't matter for recording)
+                _, _, _ = sim.execute_grasp(
+                    grasp,
+                    allow_contact=True,
+                    tgt_id=tgt_id,
+                    force_targ=True
+                )
+                
+                # Stop video recording
+                sim.stop_video_recording(log_id)
+                
+                # Check if video file exists
+                if os.path.exists(video_file):
+                    print(f"Grasp video successfully saved to: {video_file}")
+                else:
+                    print(f"Warning: Video recording failed. File not found at: {video_file}")
             else:
-                print(f"Warning: Video recording failed. File not found at: {video_file}")
+                # If current target is not in the recording list, execute grasp without recording
+                label, plan_fail, visual_fail = sim.execute_grasp(
+                    grasp,
+                    allow_contact=True,
+                    tgt_id=tgt_id,
+                    force_targ=True
+                )
         else:
             label, plan_fail, visual_fail = sim.execute_grasp(
                 grasp,

@@ -146,6 +146,7 @@ def main(args):
         hunyun2_path=args.hunyun2_path,
         model_type=args.type,
         video_recording=args.video_recording,
+        target_file_path=args.target_file,
     )
 
     # Save the result to a JSON file
@@ -169,7 +170,7 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--type", default="giga",
+    parser.add_argument("--type", default="FGC-GraspNet",
                         choices=["giga", "vgn", "targo", "targo_full_targ", "targo_hunyun2", "FGC-GraspNet", "AnyGrasp"],
                         help="Model type: giga_hr | giga_aff | giga | vgn | targo | targo_full_targ | targo_hunyun2 | FGC-GraspNet | AnyGrasp")
     parser.add_argument("--occlusion-level", type=str, choices=["no", "slight", "medium"], default="no",
@@ -186,7 +187,7 @@ if __name__ == "__main__":
                         help="Optional experiment description.")
     parser.add_argument("--test_root", type=str,
                         default=None)
-    parser.add_argument("--model", type=Path, default='checkpoints/giga_packed.pt')
+    parser.add_argument("--model", type=Path, default='/usr/stud/dira/GraspInClutter/targo/checkpoints/targonet.pt')
     parser.add_argument("--out_th", type=float, default=0.5,
                         help="Output threshold for valid grasps.")
     parser.add_argument("--scene", type=str, choices=["pile", "packed"], default="packed")
@@ -206,6 +207,8 @@ if __name__ == "__main__":
                         help="Whether to visualize and save the affordance map.")
     parser.add_argument("--video-recording", type=str2bool, default=True,
                         help="Whether to record videos of grasping attempts.")
+    parser.add_argument("--target-file", type=str, default='/usr/stud/dira/GraspInClutter/targo/example_targets/target_list.txt',
+                        help="Path to a .txt file containing target names to record. If provided, only videos of these targets will be recorded.")
     
     args = parser.parse_args()
     
