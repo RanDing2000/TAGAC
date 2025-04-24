@@ -211,6 +211,15 @@ def get_scene_from_mesh_pose_list(mesh_pose_list, target_id=None, scene_as_mesh=
             mesh = obj.links[0].visuals[0].geometry.meshes[0].copy()
         else:
             mesh = trimesh.load(mesh_path)
+        
+        ## TODO, check for acronym
+        # Check if mesh has multiple geometries and merge them if needed
+        if hasattr(mesh, 'geometry') and len(mesh.geometry) > 1:
+            try:
+                # Attempt to merge multiple geometries into a single mesh
+                mesh = mesh.dump(concatenate=True)
+            except Exception as e:
+                print(f"Error merging multiple geometries in mesh: {e}")
 
         mesh.apply_scale(scale)
         mesh.apply_transform(pose)

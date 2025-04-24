@@ -15,13 +15,14 @@ from src.vgn.utils.transform import Transform, Rotation
 from src.vgn.networks import load_network
 from src.vgn.utils import visual
 from src.utils_giga import *
-from src.vgn.grasp_conversion import anygrasp_to_vgn, fgc_to_vgn  # Import grasp conversion functions
+from src.vgn.grasp_conversion import anygrasp_to_vgn, fgc_to_vgn, anygrasp_to_vgn_with_region_filter, fgc_to_vgn_with_region_filter
 
 from src.utils_giga import tsdf_to_ply, point_cloud_to_tsdf
 from src.utils_targo import tsdf_to_mesh, filter_grasps_by_target
 
 from src.shape_completion.config import cfg_from_yaml_file
 from src.shape_completion import builder
+from src.FGCGraspNet.utils.collision_detector import ModelFreeCollisionDetector
 # from src.shape_completion.models.AdaPoinTr import AdaPoinTr
 # from src.transformer.fusion_model import AdaPoinTr
 # from src.shape_completion.models.AdaPoinTr import AdaPoinTr
@@ -50,11 +51,17 @@ def get_grasps(net, end_points):
     # if save the results, return gg_array
     return gg
 
-def vis_grasps_target(target_gg, target_cloud, scene_cloud, anygrasp=False, fgc=False):
+def collision_detection(gg, cloud):
+    mfcdetector = ModelFreeCollisionDetector(cloud, voxel_size=0.01)
+    collision_mask = mfcdetector.detect(gg, approach_dist=0.05, collision_thresh=0.01)
+    gg = gg[~collision_mask]
+    return gg
+
+def vis_grasps_target(target_gg, target_cloud, scene_cloud, anygrasp=False, fgc=False, output_prefix=None):
     # Process grasp group
     target_gg.nms()
     target_gg.sort_by_score()
-    target_gg = target_gg[:50]
+    target_gg = target_gg[:20]
     grippers = target_gg.to_open3d_geometry_list()
     
     # Create colored point clouds
@@ -65,33 +72,25 @@ def vis_grasps_target(target_gg, target_cloud, scene_cloud, anygrasp=False, fgc=
     target_cloud_colored.points = target_cloud.points
     target_cloud_colored.colors = o3d.utility.Vector3dVector(np.ones((len(target_cloud.points), 3)) * np.array([1, 0, 0]))  # Red color
     
-    # Create occluder cloud by removing target points from scene cloud
-    # This is a simplified approach - in practice, you might need more sophisticated point filtering
+    # Set scene cloud to green color
+    scene_cloud_colored = o3d.geometry.PointCloud()
+    scene_cloud_colored.points = scene_cloud.points
+    scene_cloud_colored.colors = o3d.utility.Vector3dVector(np.ones((len(scene_cloud.points), 3)) * np.array([0, 1, 0]))  # Green color
+    
+    # Print statistics for debugging
     target_points = np.asarray(target_cloud.points)
     scene_points = np.asarray(scene_cloud.points)
+    print(f"Scene points: {len(scene_points)}, Target points: {len(target_points)}")
     
-    # Find points in scene_cloud that are not in target_cloud
-    # This is a simple approach that might be slow for large point clouds
-    occluder_points = []
-    for point in scene_points:
-        # Check if this point is in target_cloud (with some tolerance)
-        is_in_target = False
-        for target_point in target_points:
-            if np.linalg.norm(point - target_point) < 0.001:  # Small tolerance
-                is_in_target = True
-                break
-        if not is_in_target:
-            occluder_points.append(point)
+    # Determine output file names based on grasp type and prefix
+    if output_prefix is None:
+        # If no output prefix provided, use default
+        prefix = 'demo/cloud'
+    else:
+        # Use the provided output prefix
+        prefix = output_prefix
     
-    # Create occluder cloud with green color
-    occluder_cloud = o3d.geometry.PointCloud()
-    if occluder_points:
-        occluder_points = np.array(occluder_points)
-        occluder_cloud.points = o3d.utility.Vector3dVector(occluder_points)
-        occluder_cloud.colors = o3d.utility.Vector3dVector(np.ones((len(occluder_points), 3)) * np.array([0, 1, 0]))  # Green color
-    
-    # Determine output file names based on grasp type
-    prefix = 'demo/cloud'
+    # Add suffixes based on grasp type
     if anygrasp:
         prefix += '_anygrasp'
     elif fgc:
@@ -99,8 +98,9 @@ def vis_grasps_target(target_gg, target_cloud, scene_cloud, anygrasp=False, fgc=
     
     # Save the colored point clouds to PLY files
     o3d.io.write_point_cloud(f'{prefix}_target.ply', target_cloud_colored)
-    o3d.io.write_point_cloud(f'{prefix}_occluder.ply', occluder_cloud)
-    print(f'Point clouds saved to {prefix}_target.ply and {prefix}_occluder.ply')
+    o3d.io.write_point_cloud(f'{prefix}_scene.ply', scene_cloud_colored)
+    print(f'Target point cloud saved to {prefix}_target.ply')
+    print(f'Scene point cloud saved to {prefix}_scene.ply')
     
     # Convert point clouds to trimesh
     import trimesh
@@ -108,14 +108,14 @@ def vis_grasps_target(target_gg, target_cloud, scene_cloud, anygrasp=False, fgc=
     target_colors = np.asarray(target_cloud_colored.colors)
     target_mesh = trimesh.points.PointCloud(target_points, colors=target_colors)
     
-    occluder_points = np.asarray(occluder_cloud.points)
-    occluder_colors = np.asarray(occluder_cloud.colors)
-    occluder_mesh = trimesh.points.PointCloud(occluder_points, colors=occluder_colors)
+    scene_points = np.asarray(scene_cloud_colored.points)
+    scene_colors = np.asarray(scene_cloud_colored.colors)
+    scene_mesh = trimesh.points.PointCloud(scene_points, colors=scene_colors)
     
-    # Create a scene and add the point clouds
+    # Create a scene and add both point clouds
     scene = trimesh.Scene()
     scene.add_geometry(target_mesh)
-    scene.add_geometry(occluder_mesh)
+    scene.add_geometry(scene_mesh)
     
     # Add all grippers to the scene
     for gripper in grippers:
@@ -188,7 +188,7 @@ class VGNImplicit(object):
         elif model_type == 'FGC-GraspNet':
             # sel.net = None
             self.net = FGC_graspnet(input_feature_dim=0, num_view=300, num_angle=12, num_depth=4,
-            cylinder_radius=0.05, hmin=-0.02, hmax=0.02, is_training=False, is_demo=True)
+            cylinder_radius=0.05, hmin=0.055, hmax=0.30, is_training=False, is_demo=True)
             self.net.to(self.device)
             checkpoint = torch.load('/usr/stud/dira/GraspInClutter/targo/src/FGCGraspNet/checkpoints/realsense_checkpoint.tar')
             self.net.load_state_dict(checkpoint['model_state_dict'])
@@ -198,7 +198,7 @@ class VGNImplicit(object):
             parser = argparse.ArgumentParser()
             parser.add_argument('--checkpoint_path', default='/usr/stud/dira/GraspInClutter/targo/src/anygrasp_sdk/grasp_detection/log/checkpoint_detection.tar', help='Model checkpoint path')
             parser.add_argument('--max_gripper_width', type=float, default=0.08, help='Maximum gripper width (<=0.1m)')
-            parser.add_argument('--gripper_height', type=float, default=0.03, help='Gripper height')
+            parser.add_argument('--gripper_height', type=float, default=0.045, help='Gripper height')
             parser.add_argument('--top_down_grasp', action='store_true', help='Output top-down grasps.')
             parser.add_argument('--debug', action='store_true', help='Enable debug mode')
             cfgs = parser.parse_args([])  # Empty list to avoid reading command line args
@@ -301,11 +301,12 @@ class VGNImplicit(object):
             
             # Filter grasps by target
             target_gg = filter_grasps_by_target(gg, target_pc_np)
-
             scene_pc_np = np.array(scene_pc, dtype=np.float32)
             scene_pc_o3d = o3d.geometry.PointCloud()
             scene_pc_o3d.points = o3d.utility.Vector3dVector(scene_pc_np)
             scene_pc_o3d.colors = o3d.utility.Vector3dVector(np.ones_like(scene_pc_np))
+
+            vis_grasps_target(target_gg, target_pc_o3d, scene_pc_o3d, anygrasp=False, fgc=True)
             
             # Sort grasps by score and perform NMS before conversion
             # Non-maximum suppression is already applied in the vis_grasps function
@@ -322,6 +323,10 @@ class VGNImplicit(object):
             # Visualize filtered grasps
             # vis_grasps(target_gg, target_pc_o3d, fgc=True)
             # vis_grasps_target(target_gg, target_pc_o3d, scene_pc_o3d, fgc=True) 
+            g1b_vis_dict = {}
+            g1b_vis_dict['target_pc'] = target_pc_o3d
+            g1b_vis_dict['scene_pc'] = scene_pc_o3d
+            g1b_vis_dict['target_gg'] = target_gg
             # print("visualized target grasps")
             # Convert scene_pc and target_pc to numpy arrays
             
@@ -350,6 +355,8 @@ class VGNImplicit(object):
             scene_pc_o3d = o3d.geometry.PointCloud()
             scene_pc_o3d.points = o3d.utility.Vector3dVector(scene_pc_np)
             scene_pc_o3d.colors = o3d.utility.Vector3dVector(np.ones_like(scene_pc_np))
+
+            vis_grasps_target(target_gg, target_pc_o3d, scene_pc_o3d, anygrasp=True, fgc=False)
             
             # Sort grasps by score and perform NMS before conversion
             # This ensures we keep only the best grasps
@@ -365,6 +372,12 @@ class VGNImplicit(object):
             # Optional: Visualize filtered grasps
             # vis_grasps(target_gg, target_pc_o3d, anygrasp=True)
             # vis_grasps_target(target_gg, target_pc_o3d, scene_pc_o3d, anygrasp=True)
+            
+            # Create visualization dictionary for AnyGrasp
+            g1b_vis_dict = {}
+            g1b_vis_dict['target_pc'] = target_pc_o3d
+            g1b_vis_dict['scene_pc'] = scene_pc_o3d
+            g1b_vis_dict['target_gg'] = target_gg
         begin = time.time()
 
         if state.type != 'FGC-GraspNet' and state.type != 'AnyGrasp':
@@ -377,15 +390,15 @@ class VGNImplicit(object):
             if len(target_gg) == 0 or np.max(target_gg.scores) < 0.0:
                 print(f"Warning: {state.type} did not find valid target grasps")
                 # Return empty lists instead of raising an error
-                return [], [], 0, 0, 0
+                return [], [], 0, g1b_vis_dict, 0, 0
             
             # Create camera extrinsic matrix (from camera to world coordinate system)
             # This represents the transformation from camera coordinate system to world coordinate system
             # Note: For simulation environments, this may need adjustment based on your setup
             
             # Get camera extrinsic matrix from state if available
-            if hasattr(state, 'extrinsics') and len(state.extrinsics) > 0:
-                extrinsic = state.extrinsics[0]
+            if hasattr(state, 'extrinsic'):
+                extrinsic = state.extrinsic
                 print(f"Using camera extrinsic from state: {extrinsic}")
             else:
                 # Create a default extrinsic matrix (identity rotation, no translation)
@@ -496,47 +509,38 @@ class VGNImplicit(object):
                 print(f"Converting {len(target_gg)} FGC-GraspNet grasps to VGN format")
                 # Use workspace_size if available in state
                 workspace_size = state.tsdf.size if hasattr(state, 'tsdf') and hasattr(state.tsdf, 'size') else None
-                grasps, scores = fgc_to_vgn(target_gg, extrinsic, workspace_size)
                 
-                # Save grasp visualization data to state for use during video recording
-                # This allows the simulation to visualize the grasps during video recording
-                if hasattr(state, 'enable_grasp_visualization') and state.enable_grasp_visualization:
-                    # Store the top 5 grasps for visualization
-                    sorted_gg = target_gg.copy()
-                    sorted_gg.nms()
-                    sorted_gg.sort_by_score()
-                    top_grasps = sorted_gg[:5]  # Take top 5 grasps for visualization
-                    
-                    # Convert to format suitable for simulator visualization
-                    state.visualization_grasps = []
-                    for i, grasp in enumerate(top_grasps):
-                        # Extract grasp parameters
-                        pos = grasp.translation
-                        rot_mat = grasp.rotation_matrix
-                        width = grasp.width
-                        score = grasp.score
-                        
-                        # Create a dictionary with grasp information
-                        grasp_info = {
-                            'position': pos,
-                            'rotation': rot_mat,
-                            'width': width,
-                            'score': score,
-                            'rank': i,  # 0 is the best grasp
-                            'type': 'fgc'  # Mark as FGC-GraspNet grasp
-                        }
-                        state.visualization_grasps.append(grasp_info)
-                    
-                    print(f"Added {len(state.visualization_grasps)} grasps for visualization during video recording")
+                # Get region bounds from state if available
+                region_lower = state.lower if hasattr(state, 'lower') else np.array([0.02, 0.02, 0.055])
+                region_upper = state.upper if hasattr(state, 'upper') else np.array([0.28, 0.28, 0.30])
+                
+                # Use the region-filtered version of the function
+                grasps, scores = fgc_to_vgn_with_region_filter(
+                    target_gg, 
+                    extrinsic, 
+                    workspace_size,
+                    region_lower=region_lower,
+                    region_upper=region_upper
+                )
             else:  # AnyGrasp
                 print(f"Converting {len(target_gg)} AnyGrasp grasps to VGN format")
                 workspace_size = state.tsdf.size if hasattr(state, 'tsdf') and hasattr(state.tsdf, 'size') else None
-                grasps, scores = anygrasp_to_vgn(target_gg, extrinsic, workspace_size)
+                
+                # Get region bounds from state if available
+                region_lower = state.lower if hasattr(state, 'lower') else np.array([0.02, 0.02, 0.055])
+                region_upper = state.upper if hasattr(state, 'upper') else np.array([0.28, 0.28, 0.30])
+                
+                # Use the region-filtered version of the function
+                grasps, scores = anygrasp_to_vgn(
+                    target_gg, 
+                    workspace_size,
+                    grasps_are_in_world=True
+                )
             
             # If no valid grasps after conversion, return empty lists
             if len(grasps) == 0:
                 print(f"Warning: No valid grasps after conversion")
-                return [], [], 0, 0, 0
+                return [], [], 0, g1b_vis_dict, 0, 0
             
             # Sort grasps by scores in descending order
             if len(scores) > 1:
@@ -549,11 +553,29 @@ class VGNImplicit(object):
                 
                 print(f"Sorted {len(grasps)} grasps by score in descending order")
                 print(f"Top grasp score: {scores[0]:.3f}, lowest grasp score: {scores[-1]:.3f}")
-                
+            
+            # 简化版直接存到demo目录，不需要那么正式的路径结构
+            # 创建demo目录
+            if not os.path.exists('demo'):
+                os.makedirs('demo')
+            
+            # 直接使用模型类型作为文件名前缀
+            model_type = "fgc" if state.type == "FGC-GraspNet" else "anygrasp"
+            
+            # 使用VGN可视化函数
+            from src.vgn.utils.visual import vis_grasps_target_vgn
+            vis_grasps_target_vgn(
+                grasps=grasps,  # 可视化所有抓取
+                scores=scores,
+                target_cloud=g1b_vis_dict['target_pc'],
+                scene_cloud=g1b_vis_dict['scene_pc'],
+                output_prefix=f"demo/{model_type}"
+            )
+            
             # Print information about the converted grasps
             print(f"Converted {len(grasps)} grasps with scores ranging from {min(scores):.3f} to {max(scores):.3f}")
             
-            return grasps, scores, 0, 0, 0
+            return grasps, scores, 0, g1b_vis_dict, 0, 0
         
         if state.type == 'targo' or state.type == 'targo_full_targ' or state.type == 'targo_hunyun2':
             # Handle both numpy array and tensor inputs
@@ -801,12 +823,13 @@ def predict(inputs, pos, net, sc_net, type, device, visual_dict=None, hunyun2_pa
             # inputs = inputs.squeeze(0)
             end_points['point_clouds'] = inputs
             gg = get_grasps(net, end_points)
+            # gg = collision_detection(gg, np.array(cloud.points))
             # gg = net(end_points)
-            # vis_grasps(gg, cloud, anygrasp=False, fgc=True)
+            vis_grasps(gg, cloud, anygrasp=False, fgc=True)
             # print(gg)
         elif type == 'AnyGrasp':
-            points = inputs
-            colors = np.zeros_like(points)
+            points = inputs # [0,0.3]
+            colors = np.zeros_like(points) 
             
             # Create an Open3D point cloud object
             cloud_o3d = o3d.geometry.PointCloud()
@@ -815,10 +838,17 @@ def predict(inputs, pos, net, sc_net, type, device, visual_dict=None, hunyun2_pa
             # Set the colors of the point cloud
             # cloud_o3d.colors = o3d.utility.Vector3dVector(colors)
             
-            xmin, xmax = 0.0, 1.0
-            ymin, ymax = 0.0, 1.0
-            zmin, zmax = 0.0, 1.0
+            # xmin, xmax = 0.0, 1.0
+            # ymin, ymax = 0.0, 1.0
+            # zmin, zmax = 0.0, 1.0
+            lower_bound=torch.tensor([0.02, 0.02, 0.055])    
+            upper_bound=torch.tensor([0.28, 0.28, 0.3])
+            xmin, xmax = lower_bound[0], upper_bound[0]
+            ymin, ymax = lower_bound[1], upper_bound[1]
+            zmin, zmax = lower_bound[2], upper_bound[2]
             lims = [xmin, xmax, ymin, ymax, zmin, zmax]
+            points = points.astype(np.float32)
+            colors = colors.astype(np.float32)
             gg, cloud = net.get_grasp(points, colors, lims=lims, apply_object_mask=True, dense_grasp=False, collision_detection=True)
             print(gg)
             # gg = get_grasps(net, end_points)
@@ -862,8 +892,9 @@ def predict(inputs, pos, net, sc_net, type, device, visual_dict=None, hunyun2_pa
                 print(f"Error during target mesh processing: {e}")
             # save_point_cloud_as_ply(scene_mesh.vertices, 'scene_mesh.ply')
             # target_mesh.export('target_mesh_pred.ply')
-        net_params_count = sum(p.numel() for p in net.parameters())
-        print(f"Number of parameters in self.net: {net_params_count:,}")
+        if not type == 'AnyGrasp':
+            net_params_count = sum(p.numel() for p in net.parameters())
+            print(f"Number of parameters in self.net: {net_params_count:,}")
     time_grasp = time.time() - time_grasp_start
     print(f"Grasp prediction time: {time_grasp:.3f}s")
     total_time = time_grasp + sc_time

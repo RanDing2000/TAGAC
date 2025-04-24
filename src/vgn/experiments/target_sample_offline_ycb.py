@@ -122,8 +122,8 @@ def run(
     hunyun2_path=None,
     video_recording=True,
     target_file_path=None,  
+    data_type='ycb',
 ):
- 
     # Initialize the simulation
     sim = ClutterRemovalSim(
         scene, object_set,
@@ -147,6 +147,7 @@ def run(
     occ_level_success_dict = init_occ_level_success_dict()
     offline_occ_level_dict = {}
 
+    
     plan_failure_count = 0
     visual_failure_count = 0
 
@@ -155,7 +156,7 @@ def run(
     tgt_bbx_label_dict = {}
     skip_dict = {}
     targ_name_label = {}  # Dictionary to store target name and label
-    
+    #
     # Dictionary to store metrics for each scene
     scene_metrics = {}
 
@@ -221,11 +222,34 @@ def run(
         # Place objects
         for obj_id, mesh_info in enumerate(mp_data.item().values()):
             pose = Transform.from_matrix(mesh_info[2])
-            if mesh_info[0].split('/')[-1] == 'plane.obj':
-                urdf_path = mesh_info[0].replace(".obj", ".urdf")
-            else:
-                # urdf_path = mesh_info[0].replace("_visual.obj", ".urdf")
-                urdf_path = mesh_info[0].replace("_textured.obj", ".urdf")
+            if data_type != 'acronym':
+                if mesh_info[0].split('/')[-1] == 'plane.obj':
+                    urdf_path = mesh_info[0].replace(".obj", ".urdf")
+                else:
+                    # urdf_path = mesh_info[0].replace("_visual.obj", ".urdf")
+                    urdf_path = mesh_info[0].replace("_textured.obj", ".urdf")
+            
+            elif data_type == 'acronym':
+                # Extract file ID part (without path and extension)
+                file_basename = os.path.basename(mesh_info[0])
+                if file_basename == 'plane.obj':
+                    urdf_path = mesh_info[0].replace(".obj", ".urdf")
+                    continue
+                else:
+                    file_id = file_basename.replace("_textured.obj", "").replace(".obj", "")
+                    
+                # Base directory for URDF files
+                urdf_base_dir = "/usr/stud/dira/GraspInClutter/targo/data/acronym/urdfs_acronym"
+                
+                # Method 1: Directly build path (if no category prefix)
+                urdf_path = f"{urdf_base_dir}/{file_id}.urdf"
+                
+                # Method 2: If category prefix exists, use glob to find matching files
+                if not os.path.exists(urdf_path):
+                    import glob
+                    matching_files = glob.glob(f"{urdf_base_dir}/*_{file_id}.urdf")
+                    if matching_files:
+                        urdf_path = matching_files[0]  # Use the first matching file found
 
             body = sim.world.load_urdf(
                 urdf_path=urdf_path,
@@ -272,7 +296,7 @@ def run(
         start_time = time.time()
 
         if model_type == 'FGC-GraspNet' or model_type == 'AnyGrasp':
-            tsdf, timings["integration"], scene_pc,target_pc, occ_level = \
+            tsdf, timings["integration"], scene_pc,target_pc, extrinsic, occ_level = \
             sim.acquire_single_tsdf_target_grid(
                 path_to_npz,
                 tgt_id,
@@ -285,7 +309,8 @@ def run(
                     scene_pc=scene_pc,
                     target_pc=target_pc,
                     occ_level=occ_level,
-                    type=model_type
+                    type=model_type,
+                    extrinsic=extrinsic
             )
             
         elif model_type == 'targo' or model_type == 'targo_full_targ' or model_type == 'targo_hunyun2':
@@ -369,7 +394,7 @@ def run(
         # else:
         # grasps, scores, timings["planning"] = grasp_plan_fn(state, scene_mesh)
 
-        if model_type == 'targo' or model_type == 'targo_full_targ' or model_type == 'targo_hunyun2' or model_type == 'FGC-GraspNet':
+        if model_type == 'targo' or model_type == 'targo_full_targ' or model_type == 'targo_hunyun2':
             grasps, scores, timings["planning"], cd, iou = grasp_plan_fn(state, scene_mesh, hunyun2_path=hunyun2_path, scene_name=scene_name, cd_iou_measure=True, target_mesh_gt=target_mesh_gt)
             # Store metrics for this scene
             scene_metrics[scene_name] = {
@@ -378,6 +403,16 @@ def run(
                 "cd": float(cd),
                 "iou": float(iou)
             }
+        elif model_type == 'FGC-GraspNet' or model_type == 'AnyGrasp':
+            grasps, scores, timings["planning"], g1b_vis_dict, cd, iou = grasp_plan_fn(state, scene_mesh, hunyun2_path=hunyun2_path, scene_name=scene_name, cd_iou_measure=True, target_mesh_gt=target_mesh_gt)
+            # Store metrics for this scene
+            scene_metrics[scene_name] = {
+                "target_name": targ_name,
+                "occlusion_level": float(occ_level),
+                "cd": float(cd),
+                "iou": float(iou)
+            }
+
         elif model_type == 'giga':
             grasps, scores, timings["planning"], cd, iou = grasp_plan_fn(state, scene_mesh, target_mesh_gt=target_mesh_gt)
             # Store metrics for this scene
@@ -460,6 +495,7 @@ def run(
                 
                 # Create directory if it doesn't exist
                 os.makedirs(video_path, exist_ok=True)
+            
                 
                 # First execute grasp (without recording) to determine success/failure
                 sim.save_state()  # Save state for later restoration
@@ -478,10 +514,33 @@ def run(
                 # Recreate the scene by loading URDF files again
                 for obj_id, mesh_info in enumerate(mp_data.item().values()):
                     pose = Transform.from_matrix(mesh_info[2])
-                    if mesh_info[0].split('/')[-1] == 'plane.obj':
-                        urdf_path = mesh_info[0].replace(".obj", ".urdf")
-                    else:
-                        urdf_path = mesh_info[0].replace("_textured.obj", ".urdf")
+                    if data_type != 'acronym':
+                        if mesh_info[0].split('/')[-1] == 'plane.obj':
+                            urdf_path = mesh_info[0].replace(".obj", ".urdf")
+                        else:
+                            urdf_path = mesh_info[0].replace("_textured.obj", ".urdf")
+                    
+                    elif data_type == 'acronym':
+                        # Extract file ID part (without path and extension)
+                        file_basename = os.path.basename(mesh_info[0])
+                        if file_basename == 'plane.obj':
+                            urdf_path = mesh_info[0].replace(".obj", ".urdf")
+                            continue
+                        else:
+                            file_id = file_basename.replace("_textured.obj", "").replace(".obj", "")
+                            
+                        # Base directory for URDF files
+                        urdf_base_dir = "/usr/stud/dira/GraspInClutter/targo/data/acronym/urdfs_acronym"
+                        
+                        # Method 1: Directly build path (if no category prefix)
+                        urdf_path = f"{urdf_base_dir}/{file_id}.urdf"
+                        
+                        # Method 2: If category prefix exists, use glob to find matching files
+                        if not os.path.exists(urdf_path):
+                            import glob
+                            matching_files = glob.glob(f"{urdf_base_dir}/*_{file_id}.urdf")
+                            if matching_files:
+                                urdf_path = matching_files[0]  # Use the first matching file found
 
                     body = sim.world.load_urdf(
                         urdf_path=urdf_path,
@@ -495,6 +554,20 @@ def run(
                 
                 # Create unique video filename with success/failure identifier
                 video_filename = f"{'success' if label != Label.FAILURE else 'failure'}_{scene_name}"
+                
+                # Visualize grasps for FGC-GraspNet or AnyGrasp models
+                if model_type in ['FGC-GraspNet', 'AnyGrasp'] and 'g1b_vis_dict' in locals() and g1b_vis_dict is not None:
+                    from src.vgn.detection_implicit import vis_grasps_target
+                    target_cloud = g1b_vis_dict.get('target_pc')
+                    scene_cloud = g1b_vis_dict.get('scene_pc')
+                    target_gg = g1b_vis_dict.get('target_gg')
+                    if target_cloud is not None and scene_cloud is not None and target_gg is not None:
+                        is_anygrasp = model_type == 'AnyGrasp'
+                        is_fgc = model_type == 'FGC-GraspNet'
+                        # Use video_path and video_filename for output location
+                        output_prefix = os.path.join(video_path, video_filename)
+                        vis_grasps_target(target_gg, target_cloud, scene_cloud, anygrasp=is_anygrasp, fgc=is_fgc, output_prefix=output_prefix)
+                        print(f"Visualized {model_type} grasps in {output_prefix}")
                 
                 # Full path for the video file
                 video_file = os.path.join(video_path, f"{video_filename}.mp4")

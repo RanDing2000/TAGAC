@@ -391,3 +391,99 @@ def convert_voxel_to_cloud(voxel, size):
                     ])
 
     return np.array(points)
+
+def vis_grasps_target_vgn(grasps, scores, target_cloud, scene_cloud, output_prefix=None, top_k=None):
+    """
+    Visualize VGN grasps with target and scene point clouds, and save as files
+    
+    Args:
+        grasps: List of VGN Grasp objects
+        scores: List of grasp scores
+        target_cloud: Target object point cloud (o3d.geometry.PointCloud)
+        scene_cloud: Scene point cloud (o3d.geometry.PointCloud)
+        output_prefix: Optional prefix for output files
+        top_k: Number of top grasps to visualize, if None visualize all grasps
+    """
+    import trimesh
+    import open3d as o3d
+    import numpy as np
+    
+    # Limit to top k grasps if specified
+    if top_k is not None and len(grasps) > top_k:
+        top_indices = np.argsort(scores)[-top_k:][::-1]  # Sort by score and take top k
+        grasps = [grasps[i] for i in top_indices]
+        scores = [scores[i] for i in top_indices]
+        print(f"Visualizing top {top_k} grasps out of {len(scores)} total grasps")
+    else:
+        print(f"Visualizing all {len(grasps)} grasps")
+    
+    # Create colored point clouds
+    # Set target cloud to red color
+    target_cloud_colored = o3d.geometry.PointCloud()
+    target_cloud_colored.points = target_cloud.points
+    target_cloud_colored.colors = o3d.utility.Vector3dVector(np.ones((len(target_cloud.points), 3)) * np.array([1, 0, 0]))  # Red color
+    
+    # Set scene cloud to green color
+    scene_cloud_colored = o3d.geometry.PointCloud()
+    scene_cloud_colored.points = scene_cloud.points
+    scene_cloud_colored.colors = o3d.utility.Vector3dVector(np.ones((len(scene_cloud.points), 3)) * np.array([0, 1, 0]))  # Green color
+    
+    # Print statistics for debugging
+    target_points = np.asarray(target_cloud.points)
+    scene_points = np.asarray(scene_cloud.points)
+    print(f"Scene points: {len(scene_points)}, Target points: {len(target_points)}")
+    
+    # Determine output file names based on prefix
+    if output_prefix is None:
+        # If no output prefix provided, use default
+        prefix = 'demo/vgn_cloud'
+    else:
+        # Use the provided output prefix
+        prefix = output_prefix
+    
+    # Save the colored point clouds to PLY files
+    o3d.io.write_point_cloud(f'{prefix}_target.ply', target_cloud_colored)
+    o3d.io.write_point_cloud(f'{prefix}_scene.ply', scene_cloud_colored)
+    print(f'Target point cloud saved to {prefix}_target.ply')
+    print(f'Scene point cloud saved to {prefix}_scene.ply')
+    
+    # Convert point clouds to trimesh
+    target_points = np.asarray(target_cloud_colored.points)
+    target_colors = np.asarray(target_cloud_colored.colors)
+    target_mesh = trimesh.points.PointCloud(target_points, colors=target_colors)
+    
+    scene_points = np.asarray(scene_cloud_colored.points)
+    scene_colors = np.asarray(scene_cloud_colored.colors)
+    scene_mesh = trimesh.points.PointCloud(scene_points, colors=scene_colors)
+    
+    # Create a scene and add both point clouds
+    scene = trimesh.Scene()
+    scene.add_geometry(target_mesh)
+    scene.add_geometry(scene_mesh)
+    
+    # Add all grasps to the scene
+    for i, (grasp, score) in enumerate(zip(grasps, scores)):
+        # Convert grasp to mesh
+        if i == 0:
+            # Best grasp is green
+            color = np.array([0, 250, 0, 180]).astype(np.uint8)
+        else:
+            # Other grasps are yellow
+            color = np.array([250, 250, 0, 180]).astype(np.uint8)
+        
+        # Create grasp mesh
+        grasp_mesh = grasp2mesh(grasp, score)
+        
+        # Override colors based on rank
+        colors = np.repeat(color[np.newaxis, :], len(grasp_mesh.faces), axis=0)
+        grasp_mesh.visual.face_colors = colors
+        
+        # Add to scene
+        scene.add_geometry(grasp_mesh)
+    
+    # Export the scene
+    output_file = f'{prefix}_with_grasps_vgn.glb'
+    scene.export(output_file)
+    print(f'Scene saved to {output_file}')
+    
+    return scene

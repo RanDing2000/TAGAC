@@ -505,8 +505,41 @@ class ClutterRemovalSim(object):
             targ_depth_pc = targ_depth_pc / 0.3 - 0.5
             return tsdf, timing, scene_no_targ_pc, targ_depth_pc,targ_grid, occ_level
         elif model == "FGC-GraspNet" or model == "AnyGrasp":
+            # Load point clouds in world coordinates
             scene_pc = np.load(curr_scene_path)['pc_scene_depth_no_specify']
+            plane = np.load('/usr/stud/dira/GraspInClutter/targo/data/plane.npy')
+            plane_hs = np.load('/usr/stud/dira/GraspInClutter/targo/data/plane_hs.npy')
+            scene_pc = np.concatenate((scene_pc, plane_hs), axis=0)
+
+            
+            # Visualize scene point cloud using Open3D and save as PLY
+            scene_pc_o3d = o3d.geometry.PointCloud()
+            scene_pc_o3d.points = o3d.utility.Vector3dVector(scene_pc)
+
+            # plane_hs_o3d = o3d.geometry.PointCloud()
+            # plane_hs_o3d.points = o3d.utility.Vector3dVector(plane_hs)
+            # o3d.io.write_point_cloud('plane_hs.ply', plane_hs_o3d)
+            
+            # Save the point cloud as PLY file
+            output_path = 'scene_point_cloud.ply'
+            o3d.io.write_point_cloud(output_path, scene_pc_o3d)
+            print(f"Scene point cloud shape: {scene_pc.shape}")
+            print(f"Saved scene point cloud to {output_path}")
             target_pc = np.load(curr_scene_path)['pc_targ_depth_no_specify']
+
+            
+            # Convert point clouds from world to camera view
+            # Create transformation matrix from world to camera
+            # world_to_camera = extrinsic.as_matrix()
+            
+            
+            # # Apply transformation to scene point cloud
+            # scene_pc_homogeneous = np.hstack((scene_pc, np.ones((scene_pc.shape[0], 1))))
+            # scene_pc = (world_to_camera @ scene_pc_homogeneous.T).T[:, :3]
+            
+            # # Apply transformation to target point cloud
+            # target_pc_homogeneous = np.hstack((target_pc, np.ones((target_pc.shape[0], 1))))
+            # target_pc = (world_to_camera @ target_pc_homogeneous.T).T[:, :3]
             # Define a function to adjust point cloud to target size
             # Adjust scene_pc to target size
             # scene_pc = adjust_point_cloud_size(scene_pc)
@@ -525,7 +558,7 @@ class ClutterRemovalSim(object):
             # scene_pc shape is (2048, 3)
             # save_point_cloud_as_ply(scene_pc, 'scene_pc_with_plane.ply')  # Visualize using open3d
             ## save
-            return tsdf, timing, scene_pc, target_pc, occ_level
+            return tsdf, timing, scene_pc, target_pc, extrinsic, occ_level
 
         # # Load data
         # depth_img = np.load(curr_scene_path)["depth_imgs"]

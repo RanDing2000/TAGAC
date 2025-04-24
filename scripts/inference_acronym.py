@@ -131,6 +131,7 @@ def main(args):
     # Only keep the target_sample_offline evaluation
     occ_level_sr = target_sample_offline_ycb.run(
         grasp_plan_fn=grasp_planner,
+        data_type='acronym',
         logdir=args.logdir,
         description=args.description,
         scene=args.scene,
@@ -207,7 +208,7 @@ if __name__ == "__main__":
                         help="Whether to visualize and save the affordance map.")
     parser.add_argument("--video-recording", type=str2bool, default=False,
                         help="Whether to record videos of grasping attempts.")
-    parser.add_argument("--target-file", type=str, default='/usr/stud/dira/GraspInClutter/targo/example_targets/target_list.txt',
+    parser.add_argument("--target-file", type=str, default='/usr/stud/dira/GraspInClutter/targo/example_targets/acronym_target_list.txt',
                         help="Path to a .txt file containing target names to record. If provided, only videos of these targets will be recorded.")
     
     args = parser.parse_args()
@@ -217,46 +218,46 @@ if __name__ == "__main__":
         if args.hunyun2_path is None:
             args.hunyun2_path = '/usr/stud/dira/GraspInClutter/Gen3DSR/output_amodal/ycb_amodal_middle_occlusion_icp_v7_only_gt_1000'
         if args.result_root is None:
-            args.result_root = 'targo_eval_results/ycb/eval_results_full-middle-occlusion'
+            args.result_root = 'targo_eval_results/acronym/eval_results_full-middle-occlusion'
         if args.logdir is None:
-            args.logdir = Path('targo_eval_results/ycb/eval_results_full-middle-occlusion')
+            args.logdir = Path('targo_eval_results/acronym/eval_results_full-middle-occlusion')
         if args.test_root is None:
-            args.test_root = 'data_scenes/ycb/maniskill-ycb-v2-middle-occlusion-1000'
+            args.test_root = 'data_scenes/acronym/acronym-middle-occlusion-1000'
         if args.occ_level_dict is None:
-            args.occ_level_dict = 'data_scenes/ycb/maniskill-ycb-v2-middle-occlusion-1000/test_set/occ_level_dict.json'
+            args.occ_level_dict = 'data_scenes/acronym/acronym-middle-occlusion-1000/test_set/occ_level_dict.json'
     elif args.occlusion_level == "slight":
         if args.hunyun2_path is None:
             args.hunyun2_path = '/usr/stud/dira/GraspInClutter/Gen3DSR/output_amodal/ycb_amodal_slight_occlusion_icp_v7_only_gt_1000'
         if args.result_root is None:
-            args.result_root = 'targo_eval_results/ycb/eval_results_full-slight-occlusion'
+            args.result_root = 'targo_eval_results/acronym/eval_results_full-slight-occlusion'
         if args.logdir is None:
-            args.logdir = Path('targo_eval_results/ycb/eval_results_full-slight-occlusion')
+            args.logdir = Path('targo_eval_results/acronym/eval_results_full-slight-occlusion')
         if args.test_root is None:
-            args.test_root = 'data_scenes/ycb/maniskill-ycb-v2-slight-occlusion-1000'
+            args.test_root = 'data_scenes/acronym/acronym-slight-occlusion-1000'
         if args.occ_level_dict is None:
-            args.occ_level_dict = 'data_scenes/ycb/maniskill-ycb-v2-slight-occlusion-1000/test_set/occ_level_dict.json'
+            args.occ_level_dict = 'data_scenes/acronym/acronym-slight-occlusion-1000/test_set/occ_level_dict.json'
     elif args.occlusion_level == "no":
         if args.hunyun2_path is None:
             args.hunyun2_path = '/usr/stud/dira/GraspInClutter/Gen3DSR/output_amodal/work/ycb_amodal_no_occlusion_icp_v7_only_gt_1000'
         if args.result_root is None:
-            args.result_root = 'targo_eval_results/ycb/eval_results_full-no-occlusion'
+            args.result_root = 'targo_eval_results/acronym/eval_results_full-no-occlusion'
         if args.logdir is None:
-            args.logdir = Path('targo_eval_results/ycb/eval_results_full-no-occlusion')
+            args.logdir = Path('targo_eval_results/acronym/eval_results_full-no-occlusion')
         if args.test_root is None:
-            args.test_root = 'data_scenes/ycb/maniskill-ycb-v2-no-occlusion-1000'
+            args.test_root = 'data_scenes/acronym/acronym-no-occlusion-1000'
         if args.occ_level_dict is None:
-            args.occ_level_dict = 'data_scenes/ycb/maniskill-ycb-v2-no-occlusion-1000/test_set/occ_level_dict.json'
+            args.occ_level_dict = 'data_scenes/acronym/acronym-no-occlusion-1000/test_set/occ_level_dict.json'
 
     # Removed unnecessary parameters:
     # --num-objects, --num-view, --num-rounds, --add-noise, --silence
 
     if args.logdir is None:
         if args.occlusion_level == "medium":
-            args.logdir = Path('targo_eval_results/ycb/eval_results_full-middle-occlusion')
+            args.logdir = Path('targo_eval_results/acronym/eval_results_full-middle-occlusion')
         elif args.occlusion_level == "slight":
-            args.logdir = Path('targo_eval_results/ycb/eval_results_full-slight-occlusion')
+            args.logdir = Path('targo_eval_results/acronym/eval_results_full-slight-occlusion')
         else:
-            args.logdir = Path('targo_eval_results/ycb/eval_results_full-no-occlusion')
+            args.logdir = Path('targo_eval_results/acronym/eval_results_full-no-occlusion')
 
     # Automatically create a result path if none is provided
     if str(args.result_path) == "":
