@@ -182,10 +182,10 @@ def vis_grasps(gg, cloud, anygrasp=False, fgc=False):
 class VGNImplicit(object):
     def __init__(self, model_path, model_type, best=False, force_detection=False, qual_th=0.9, out_th=0.5, visualize=False, resolution=40,cd_iou_measure=False,**kwargs,):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        if model_type != 'FGC-GraspNet' and model_type != 'AnyGrasp' and model_type != 'AnyGrasp_full_targ':
+        if model_type != 'FGC-GraspNet' and model_type != 'AnyGrasp' and model_type != 'AnyGrasp_full_targ' and model_type != 'FGC_full_targ':
             self.net = load_network(model_path, self.device, model_type=model_type) 
             self.net = self.net.eval()
-        elif model_type == 'FGC-GraspNet':
+        elif model_type == 'FGC-GraspNet' or model_type == 'FGC_full_targ':
             # sel.net = None
             self.net = FGC_graspnet(input_feature_dim=0, num_view=300, num_angle=12, num_depth=4,
             cylinder_radius=0.05, hmin=0.055, hmax=0.30, is_training=False, is_demo=True)
@@ -279,14 +279,25 @@ class VGNImplicit(object):
             with torch.no_grad():
                 qual_vol, rot_vol, width_vol, completed_targ_grid, cd, iou = predict(inputs, self.pos, self.net, self.sc_net, state.type, self.device, visual_dict, hunyun2_path, scene_name, cd_iou_measure=True, target_mesh_gt=target_mesh_gt)
 
-        elif state.type == 'FGC-GraspNet':
-            inputs = state.scene_pc
+        elif state.type == 'FGC-GraspNet' or state.type == 'FGC_full_targ':
+            # inputs = state.scene_pc
+            if state.type == 'FGC_full_targ':
+                inputs = np.concatenate((state.targ_full_pc, state.scene_no_targ_pc), axis=0)
+                # plane_hs = np.load('/usr/stud/dira/GraspInClutter/targo/data/plane_hs.npy')
+                # inputs = np.concatenate((inputs, plane_hs), axis=0)
+                save_point_cloud_as_ply(inputs, 'scene_pc.ply')
+            elif state.type == 'FGC-GraspNet':
+                inputs = state.scene_pc
+                save_point_cloud_as_ply(inputs, 'scene_pc.ply')
             with torch.no_grad():
                 gg = predict(inputs, self.pos, self.net, self.sc_net, state.type, self.device, visual_dict, hunyun2_path, scene_name, cd_iou_measure=True, target_mesh_gt=target_mesh_gt)
             
             ## write target-driven filter here, 
             scene_pc = state.scene_pc
-            target_pc = state.target_pc
+            if state.type == 'FGC_full_targ':
+                target_pc = state.targ_full_pc
+            elif state.type == 'FGC-GraspNet':
+                target_pc = state.target_pc
             print(scene_pc.shape, target_pc.shape)
             print("target_pc")
             print(target_pc)
@@ -809,11 +820,13 @@ def predict(inputs, pos, net, sc_net, type, device, visual_dict=None, hunyun2_pa
         # save_point_cloud_as_ply(completed_targ_pc[0].cpu().numpy(), 'completed_targ_pc.ply')
     time_grasp_start = time.time()
     with torch.no_grad():
-        if type == 'FGC-GraspNet':
+        if type == 'FGC-GraspNet' or type == 'FGC_full_targ':
             end_points = {}
             # Convert inputs to torch tensor if it's not already
             if isinstance(inputs, np.ndarray):
                 inputs = torch.from_numpy(inputs).float()
+            
+            inputs = inputs / 0.3 - 0.5
             
             # Make sure inputs is a batch
             if len(inputs.shape) == 2:
@@ -836,10 +849,12 @@ def predict(inputs, pos, net, sc_net, type, device, visual_dict=None, hunyun2_pa
             # inputs = inputs.squeeze(0)
             end_points['point_clouds'] = inputs
             gg = get_grasps(net, end_points)
+            mask = gg.scores > 0.0
+            gg = gg[mask]
             # gg = collision_detection(gg, np.array(cloud.points))
             # gg = net(end_points)
             vis_grasps(gg, cloud, anygrasp=False, fgc=True)
-            # print(gg)
+            print(gg)
         elif type == 'AnyGrasp' or type == 'AnyGrasp_full_targ':
             points = inputs # [0,0.3]
             inputs = inputs / 0.3 - 0.5

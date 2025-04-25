@@ -504,7 +504,7 @@ class ClutterRemovalSim(object):
             scene_no_targ_pc = scene_no_targ_pc / 0.3 - 0.5
             targ_depth_pc = targ_depth_pc / 0.3 - 0.5
             return tsdf, timing, scene_no_targ_pc, targ_depth_pc,targ_grid, occ_level
-        elif model == "AnyGrasp_full_targ":
+        elif model == "AnyGrasp_full_targ" or model == "FGC_full_targ":
             # Similar to targo type, but get both scene_no_targ_pc and targ_pc 
             # to be used later for concatenation as input
             pc_scene_depth_no_specify = np.load(curr_scene_path)["pc_scene_depth_no_specify"]
