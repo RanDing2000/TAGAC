@@ -347,6 +347,29 @@ def run(
                     occ_level=occ_level,
                     type=model_type
             )
+        elif model_type == 'AnyGrasp_full_targ':
+            # Get both scene without target and target point clouds for AnyGrasp_full_targ
+            tsdf, timings["integration"], scene_no_targ_pc, targ_pc, targ_grid, occ_level = \
+            sim.acquire_single_tsdf_target_grid(
+                path_to_npz,
+                tgt_id,
+                40,
+                model_type,
+                # 'targo',  # Use targo type to get separate scene_no_targ_pc and targ_pc
+                curr_mesh_pose_list=scene_name,
+            )
+            
+            # Set scene and target point cloud
+            state = argparse.Namespace(
+                    tsdf=tsdf,
+                    scene_no_targ_pc=scene_no_targ_pc,
+                    scene_pc=scene_no_targ_pc,  # For AnyGrasp compatibility
+                    targ_grid=targ_grid,
+                    targ_pc=targ_pc,
+                    target_pc=targ_pc,  # For AnyGrasp compatibility 
+                    occ_level=occ_level,
+                    type=model_type
+                )
         end_time = time.time()
         # print(f"acquire {num_id}-th {scene_name} took {end_time - start_time:.2f}s for shape-completion input")
 
@@ -388,7 +411,10 @@ def run(
         except UnboundLocalError:
             print(f"Error: target_mesh not defined for scene {scene_name}, skipping")
             continue
-            
+        
+        if model_type == 'AnyGrasp_full_targ':
+            targ_full_pc = target_mesh.sample(4096)
+            state.targ_full_pc = targ_full_pc
         # if model_type != 'vgn':
         #     grasps, scores, timings["planning"], visual_dict = grasp_plan_fn(state, scene_mesh)
         # else:
@@ -403,7 +429,7 @@ def run(
                 "cd": float(cd),
                 "iou": float(iou)
             }
-        elif model_type == 'FGC-GraspNet' or model_type == 'AnyGrasp':
+        elif model_type == 'FGC-GraspNet' or model_type == 'AnyGrasp' or model_type == 'AnyGrasp_full_targ':
             grasps, scores, timings["planning"], g1b_vis_dict, cd, iou = grasp_plan_fn(state, scene_mesh, hunyun2_path=hunyun2_path, scene_name=scene_name, cd_iou_measure=True, target_mesh_gt=target_mesh_gt)
             # Store metrics for this scene
             scene_metrics[scene_name] = {

@@ -57,6 +57,32 @@ import trimesh
 from scipy.spatial import cKDTree
 from scipy.spatial import KDTree
 
+
+def get_pc_scene_no_targ_kdtree(scene_pc: np.ndarray, targ_pc: np.ndarray, tol=1e-6):
+    """
+    Remove all points from `scene_pc` that are within a distance `tol` of any point in `targ_pc`.
+    This uses a KDTree for efficient nearest neighbor search.
+    
+    Parameters:
+        scene_pc (np.ndarray): The full scene point cloud, shape (N, 3).
+        targ_pc (np.ndarray): The target object point cloud to remove, shape (M, 3).
+        tol (float): Distance threshold to determine overlap.
+
+    Returns:
+        np.ndarray: The filtered point cloud with target points removed.
+    """
+    # Build a KDTree from the target points
+    tree = cKDTree(targ_pc)
+
+    # For each point in the scene, query the nearest neighbor in targ_pc within distance `tol`
+    dists, _ = tree.query(scene_pc, distance_upper_bound=tol)
+
+    # Points with no neighbor within `tol` will have distance = inf
+    mask = np.isinf(dists)  # Keep only points with no close match in targ_pc
+
+    # Return filtered scene point cloud
+    return scene_pc[mask]
+
 def filter_grasps_by_target(gg, target_pc, distance_threshold=0.05):
     """
     Filter grasps that are close to the target object

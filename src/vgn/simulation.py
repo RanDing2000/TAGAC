@@ -8,7 +8,7 @@ import open3d as o3d
 import gzip
 import matplotlib.pyplot as plt
 from typing import Union
-from src.utils_targo import points_equal, collect_mesh_pose_dict, find_urdf, adjust_point_cloud_size
+from src.utils_targo import points_equal, collect_mesh_pose_dict, find_urdf, get_pc_scene_no_targ_kdtree
 from src.vgn.grasp import Label
 from src.vgn.perception import TSDFVolume, CameraIntrinsic, create_tsdf, camera_on_sphere
 from src.vgn.utils import btsim, workspace_lines
@@ -504,6 +504,19 @@ class ClutterRemovalSim(object):
             scene_no_targ_pc = scene_no_targ_pc / 0.3 - 0.5
             targ_depth_pc = targ_depth_pc / 0.3 - 0.5
             return tsdf, timing, scene_no_targ_pc, targ_depth_pc,targ_grid, occ_level
+        elif model == "AnyGrasp_full_targ":
+            # Similar to targo type, but get both scene_no_targ_pc and targ_pc 
+            # to be used later for concatenation as input
+            pc_scene_depth_no_specify = np.load(curr_scene_path)["pc_scene_depth_no_specify"]
+            pc_targ_depth_no_specify = np.load(curr_scene_path)["pc_targ_depth_no_specify"]
+            pc_scene_no_targ_pc = get_pc_scene_no_targ_kdtree(pc_scene_depth_no_specify, pc_targ_depth_no_specify)
+            # scene_no_targ_pc = np.load(curr_scene_path)["pc_scene_no_targ"]
+            targ_depth_pc = np.load(curr_scene_path)["pc_depth_targ"].astype(np.float32)
+            
+            
+            # Return all necessary data for AnyGrasp_full_targ processing
+            return tsdf, timing, pc_scene_no_targ_pc, targ_depth_pc, targ_grid, occ_level
+        
         elif model == "FGC-GraspNet" or model == "AnyGrasp":
             # Load point clouds in world coordinates
             scene_pc = np.load(curr_scene_path)['pc_scene_depth_no_specify']

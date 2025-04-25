@@ -133,7 +133,7 @@ def vis_grasps_target(target_gg, target_cloud, scene_cloud, anygrasp=False, fgc=
 def vis_grasps(gg, cloud, anygrasp=False, fgc=False):
     gg.nms()
     gg.sort_by_score()
-    gg = gg[:50]
+    # gg = gg[:50]
     grippers = gg.to_open3d_geometry_list()
     # o3d.visualization.draw_geometries([cloud, *grippers])
     # save as glb file, cloud and grippers
@@ -182,7 +182,7 @@ def vis_grasps(gg, cloud, anygrasp=False, fgc=False):
 class VGNImplicit(object):
     def __init__(self, model_path, model_type, best=False, force_detection=False, qual_th=0.9, out_th=0.5, visualize=False, resolution=40,cd_iou_measure=False,**kwargs,):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        if model_type != 'FGC-GraspNet' and model_type != 'AnyGrasp':
+        if model_type != 'FGC-GraspNet' and model_type != 'AnyGrasp' and model_type != 'AnyGrasp_full_targ':
             self.net = load_network(model_path, self.device, model_type=model_type) 
             self.net = self.net.eval()
         elif model_type == 'FGC-GraspNet':
@@ -193,7 +193,7 @@ class VGNImplicit(object):
             checkpoint = torch.load('/usr/stud/dira/GraspInClutter/targo/src/FGCGraspNet/checkpoints/realsense_checkpoint.tar')
             self.net.load_state_dict(checkpoint['model_state_dict'])
             self.net.eval()
-        elif model_type == 'AnyGrasp':
+        elif model_type == 'AnyGrasp' or model_type == 'AnyGrasp_full_targ':
             # Initialize AnyGrasp with configuration parameters
             parser = argparse.ArgumentParser()
             parser.add_argument('--checkpoint_path', default='/usr/stud/dira/GraspInClutter/targo/src/anygrasp_sdk/grasp_detection/log/checkpoint_detection.tar', help='Model checkpoint path')
@@ -207,7 +207,7 @@ class VGNImplicit(object):
             self.net = AnyGrasp(cfgs)
             self.net.load_net()
             # self.net.eval()
-        if model_type != 'AnyGrasp':
+        if model_type != 'AnyGrasp' and model_type != 'AnyGrasp_full_targ':
             net_params_count = sum(p.numel() for p in self.net.parameters())
             print(f"Number of parameters in self.net: {net_params_count}")
         
@@ -333,14 +333,24 @@ class VGNImplicit(object):
             # Create open3d point cloud objects
             
         
-        elif state.type == 'AnyGrasp':
-            inputs = state.scene_pc
+        elif state.type == 'AnyGrasp' or state.type == 'AnyGrasp_full_targ':
+            if state.type == 'AnyGrasp_full_targ':
+                inputs = np.concatenate((state.targ_full_pc, state.scene_no_targ_pc), axis=0)
+                plane_hs = np.load('/usr/stud/dira/GraspInClutter/targo/data/plane_hs.npy')
+                inputs = np.concatenate((inputs, plane_hs), axis=0)
+                save_point_cloud_as_ply(inputs, 'scene_pc.ply')
+            else:
+                inputs = state.scene_pc
+                save_point_cloud_as_ply(inputs, 'scene_pc.ply')
             with torch.no_grad():
                 gg = predict(inputs, self.pos, self.net, self.sc_net, state.type, self.device, visual_dict, hunyun2_path, scene_name, cd_iou_measure=True, target_mesh_gt=target_mesh_gt)
                 
             # Extract target point cloud and filter grasps by target
             scene_pc = state.scene_pc
-            target_pc = state.target_pc
+            if state.type == 'AnyGrasp':
+                target_pc = state.targ_pc
+            elif state.type == 'AnyGrasp_full_targ':
+                target_pc = state.targ_full_pc
             
             # Create target point cloud for visualization
             target_pc_np = np.array(target_pc, dtype=np.float32)
@@ -357,6 +367,9 @@ class VGNImplicit(object):
             scene_pc_o3d.colors = o3d.utility.Vector3dVector(np.ones_like(scene_pc_np))
 
             vis_grasps_target(target_gg, target_pc_o3d, scene_pc_o3d, anygrasp=True, fgc=False)
+
+            # o3d.io.write_point_cloud(target_pc_o3d.points, 'target_pc.ply')
+            o3d.io.write_point_cloud("target_pc.ply", target_pc_o3d)
             
             # Sort grasps by score and perform NMS before conversion
             # This ensures we keep only the best grasps
@@ -380,12 +393,12 @@ class VGNImplicit(object):
             g1b_vis_dict['target_gg'] = target_gg
         begin = time.time()
 
-        if state.type != 'FGC-GraspNet' and state.type != 'AnyGrasp':
+        if state.type != 'FGC-GraspNet' and state.type != 'AnyGrasp' and state.type != 'AnyGrasp_full_targ':
             qual_vol = qual_vol.reshape((self.resolution, self.resolution, self.resolution))
             rot_vol = rot_vol.reshape((self.resolution, self.resolution, self.resolution, 4))
             width_vol = width_vol.reshape((self.resolution, self.resolution, self.resolution))
 
-        if state.type == 'FGC-GraspNet' or state.type == 'AnyGrasp':
+        if state.type == 'FGC-GraspNet' or state.type == 'AnyGrasp' or state.type == 'AnyGrasp_full_targ':
             # Check if there are valid grasps
             if len(target_gg) == 0 or np.max(target_gg.scores) < 0.0:
                 print(f"Warning: {state.type} did not find valid target grasps")
@@ -827,8 +840,9 @@ def predict(inputs, pos, net, sc_net, type, device, visual_dict=None, hunyun2_pa
             # gg = net(end_points)
             vis_grasps(gg, cloud, anygrasp=False, fgc=True)
             # print(gg)
-        elif type == 'AnyGrasp':
+        elif type == 'AnyGrasp' or type == 'AnyGrasp_full_targ':
             points = inputs # [0,0.3]
+            inputs = inputs / 0.3 - 0.5
             colors = np.zeros_like(points) 
             
             # Create an Open3D point cloud object
@@ -892,7 +906,7 @@ def predict(inputs, pos, net, sc_net, type, device, visual_dict=None, hunyun2_pa
                 print(f"Error during target mesh processing: {e}")
             # save_point_cloud_as_ply(scene_mesh.vertices, 'scene_mesh.ply')
             # target_mesh.export('target_mesh_pred.ply')
-        if not type == 'AnyGrasp':
+        if not type == 'AnyGrasp' and not type == 'AnyGrasp_full_targ':
             net_params_count = sum(p.numel() for p in net.parameters())
             print(f"Number of parameters in self.net: {net_params_count:,}")
     time_grasp = time.time() - time_grasp_start
@@ -901,7 +915,7 @@ def predict(inputs, pos, net, sc_net, type, device, visual_dict=None, hunyun2_pa
     print(f"Total time: {total_time:.3f}s")
 
     # move output back to the CPU
-    if type != 'AnyGrasp' and type != 'FGC-GraspNet':
+    if type != 'AnyGrasp' and type != 'FGC-GraspNet' and type != 'AnyGrasp_full_targ':
         qual_vol = qual_vol.cpu().squeeze().numpy()
         rot_vol = rot_vol.cpu().squeeze().numpy()
         width_vol = width_vol.cpu().squeeze().numpy()
