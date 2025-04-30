@@ -19,7 +19,7 @@ from src.vgn.detection import VGN
 from src.vgn.detection_implicit import VGNImplicit
 
 # Only keep target_sample_offline
-from src.vgn.experiments import target_sample_offline_ycb
+from src.vgn.experiments import target_sample_offline_acronym   
 
 # Utility
 # (We keep set_random_seed here if you plan to reuse it, but it's not strictly used now.)
@@ -129,7 +129,7 @@ def main(args):
     result_path = create_and_write_args_to_result_path(args)
     args.result_path = result_path
     # Only keep the target_sample_offline evaluation
-    occ_level_sr = target_sample_offline_ycb.run(
+    occ_level_sr = target_sample_offline_acronym.run(
         grasp_plan_fn=grasp_planner,
         data_type='acronym',
         logdir=args.logdir,
@@ -161,7 +161,8 @@ def main(args):
             "python", 
             "targo_eval_results/stastics_analysis/analyze_category.py", 
             "--eval_file", f"{args.result_path}/meta_evaluations.txt",
-            "--output_dir", args.result_path
+            "--output_dir", args.result_path,
+            "--data_type", "acronym",
         ]
         print(f"Executing: {' '.join(analysis_cmd)}")
         subprocess.run(analysis_cmd)
@@ -171,10 +172,10 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--type", default="AnyGrasp",
+    parser.add_argument("--type", default="targo_hunyun2",
                         choices=["giga", "vgn", "targo", "targo_full_targ", "targo_hunyun2", "FGC-GraspNet", "AnyGrasp"],
                         help="Model type: giga_hr | giga_aff | giga | vgn | targo | targo_full_targ | targo_hunyun2 | FGC-GraspNet | AnyGrasp")
-    parser.add_argument("--occlusion-level", type=str, choices=["no", "slight", "medium"], default="no",
+    parser.add_argument("--occlusion-level", type=str, choices=["no", "slight", "medium"], default="medium",
                         help="Occlusion level for the experiment: no, slight or medium.")
     parser.add_argument("--hunyun2_path", type=str, default=None,
                         help="Path to hunyun2 model.")
@@ -188,7 +189,7 @@ if __name__ == "__main__":
                         help="Optional experiment description.")
     parser.add_argument("--test_root", type=str,
                         default=None)
-    parser.add_argument("--model", type=Path, default='/usr/stud/dira/GraspInClutter/targo/checkpoints/giga_packed.pt')
+    parser.add_argument("--model", type=Path, default='/usr/stud/dira/GraspInClutter/targo/checkpoints/targonet.pt')
     parser.add_argument("--out_th", type=float, default=0.5,
                         help="Output threshold for valid grasps.")
     parser.add_argument("--scene", type=str, choices=["pile", "packed"], default="packed")
@@ -216,18 +217,18 @@ if __name__ == "__main__":
     # Set paths based on occlusion level
     if args.occlusion_level == "medium":
         if args.hunyun2_path is None:
-            args.hunyun2_path = '/usr/stud/dira/GraspInClutter/Gen3DSR/output_amodal/ycb_amodal_middle_occlusion_icp_v7_only_gt_1000'
+            args.hunyun2_path = '/usr/stud/dira/GraspInClutter/Gen3DSR/hunyuan_results/acronym/medium'
         if args.result_root is None:
-            args.result_root = 'targo_eval_results/acronym/eval_results_full-middle-occlusion'
+            args.result_root = 'targo_eval_results/acronym/eval_results_full-medium-occlusion'  
         if args.logdir is None:
-            args.logdir = Path('targo_eval_results/acronym/eval_results_full-middle-occlusion')
+            args.logdir = Path('targo_eval_results/acronym/eval_results_full-medium-occlusion')
         if args.test_root is None:
             args.test_root = 'data_scenes/acronym/acronym-middle-occlusion-1000'
         if args.occ_level_dict is None:
-            args.occ_level_dict = 'data_scenes/acronym/acronym-middle-occlusion-1000/test_set/occ_level_dict.json'
+            args.occ_level_dict = '/usr/stud/dira/GraspInClutter/targo/data_scenes/acronym/acronym-middle-occlusion-1000/test_set/occlusion_level_dict.json'
     elif args.occlusion_level == "slight":
         if args.hunyun2_path is None:
-            args.hunyun2_path = '/usr/stud/dira/GraspInClutter/Gen3DSR/output_amodal/ycb_amodal_slight_occlusion_icp_v7_only_gt_1000'
+            args.hunyun2_path = '/usr/stud/dira/GraspInClutter/Gen3DSR/hunyuan_results/acronym/slight'
         if args.result_root is None:
             args.result_root = 'targo_eval_results/acronym/eval_results_full-slight-occlusion'
         if args.logdir is None:
@@ -235,10 +236,10 @@ if __name__ == "__main__":
         if args.test_root is None:
             args.test_root = 'data_scenes/acronym/acronym-slight-occlusion-1000'
         if args.occ_level_dict is None:
-            args.occ_level_dict = 'data_scenes/acronym/acronym-slight-occlusion-1000/test_set/occ_level_dict.json'
+            args.occ_level_dict = 'data_scenes/acronym/acronym-slight-occlusion-1000/test_set/occlusion_level_dict.json'
     elif args.occlusion_level == "no":
         if args.hunyun2_path is None:
-            args.hunyun2_path = '/usr/stud/dira/GraspInClutter/Gen3DSR/output_amodal/work/ycb_amodal_no_occlusion_icp_v7_only_gt_1000'
+            args.hunyun2_path = '/usr/stud/dira/GraspInClutter/Gen3DSR/hunyuan_results/acronym/no'
         if args.result_root is None:
             args.result_root = 'targo_eval_results/acronym/eval_results_full-no-occlusion'
         if args.logdir is None:
@@ -246,14 +247,14 @@ if __name__ == "__main__":
         if args.test_root is None:
             args.test_root = 'data_scenes/acronym/acronym-no-occlusion-1000'
         if args.occ_level_dict is None:
-            args.occ_level_dict = 'data_scenes/acronym/acronym-no-occlusion-1000/test_set/occ_level_dict.json'
+            args.occ_level_dict = 'data_scenes/acronym/acronym-no-occlusion-1000/test_set/occlusion_level_dict.json'
 
     # Removed unnecessary parameters:
     # --num-objects, --num-view, --num-rounds, --add-noise, --silence
 
     if args.logdir is None:
         if args.occlusion_level == "medium":
-            args.logdir = Path('targo_eval_results/acronym/eval_results_full-middle-occlusion')
+            args.logdir = Path('targo_eval_results/acronym/eval_results_full-medium-occlusion')
         elif args.occlusion_level == "slight":
             args.logdir = Path('targo_eval_results/acronym/eval_results_full-slight-occlusion')
         else:

@@ -237,6 +237,7 @@ def run(
                 else:
                     file_id = file_basename.replace("_textured.obj", "").replace(".obj", "")
                     
+                    # Base directory for URDF files
                     urdf_base_dir = "/usr/stud/dira/GraspInClutter/targo/data/acronym/urdfs_acronym"
                     
                     # Method 1: Directly build path (if no category prefix)
@@ -549,22 +550,21 @@ def run(
                         file_basename = os.path.basename(mesh_info[0])
                         if file_basename == 'plane.obj':
                             urdf_path = mesh_info[0].replace(".obj", ".urdf")
-                            continue
                         else:
                             file_id = file_basename.replace("_textured.obj", "").replace(".obj", "")
                             
-                        # Base directory for URDF files
-                        urdf_base_dir = "/usr/stud/dira/GraspInClutter/targo/data/acronym/urdfs_acronym"
-                        
-                        # Method 1: Directly build path (if no category prefix)
-                        urdf_path = f"{urdf_base_dir}/{file_id}.urdf"
-                        
-                        # Method 2: If category prefix exists, use glob to find matching files
-                        if not os.path.exists(urdf_path):
-                            import glob
-                            matching_files = glob.glob(f"{urdf_base_dir}/*_{file_id}.urdf")
-                            if matching_files:
-                                urdf_path = matching_files[0]  # Use the first matching file found
+                            # Base directory for URDF files
+                            urdf_base_dir = "/usr/stud/dira/GraspInClutter/targo/data/acronym/urdfs_acronym"
+                            
+                            # Method 1: Directly build path (if no category prefix)
+                            urdf_path = f"{urdf_base_dir}/{file_id}.urdf"
+                            
+                            # Method 2: If category prefix exists, use glob to find matching files
+                            if not os.path.exists(urdf_path):
+                                import glob
+                                matching_files = glob.glob(f"{urdf_base_dir}/*_{file_id}.urdf")
+                                if matching_files:
+                                    urdf_path = matching_files[0]  # Use the first matching file found
 
                     body = sim.world.load_urdf(
                         urdf_path=urdf_path,

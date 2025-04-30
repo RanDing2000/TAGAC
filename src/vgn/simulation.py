@@ -181,7 +181,7 @@ class ClutterRemovalSim(object):
         self.occ_level_dict = {}
         self.save_occ_level_dict = False
         if test_root is not None:
-            self.occ_level_dict_path = Path(test_root) / 'test_set' / 'occ_level_dict.json'
+            self.occ_level_dict_path = Path(test_root) / 'test_set' / 'occlusion_level_dict.json'
             if not self.occ_level_dict_path.exists():
                 self.occ_level_dict = {}
                 self.save_occ_level_dict = True
@@ -666,10 +666,10 @@ class ClutterRemovalSim(object):
                         result = Label.FAILURE, self.gripper.max_opening_width
                         visual_failure = 1
 
-        # Capture some final frames
-        if hasattr(self.world, 'recording') and self.world.recording:
-            for _ in range(10):  # More frames at the end for better visualization
-                self.world.capture_frame()
+        # # Capture some final frames
+        # if hasattr(self.world, 'recording') and self.world.recording:
+        #     for _ in range(10):  # More frames at the end for better visualization
+        #         self.world.capture_frame()
 
         self.world.remove_body(self.gripper.body)
         if remove:

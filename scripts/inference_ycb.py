@@ -159,9 +159,10 @@ def main(args):
         print("\n====== Running category analysis ======")
         analysis_cmd = [
             "python", 
-            "targo_eval_results/stastics_analysis/analyze_category.py", 
+            "targo_eval_results/stastics_analysis/analyze_category_detailed.py", 
             "--eval_file", f"{args.result_path}/meta_evaluations.txt",
-            "--output_dir", args.result_path
+            "--output_dir", args.result_path,
+            "--data_type", "ycb",
         ]
         print(f"Executing: {' '.join(analysis_cmd)}")
         subprocess.run(analysis_cmd)
@@ -171,11 +172,11 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--type", default="FGC_full_targ",
+    parser.add_argument("--type", default="targo",
                         choices=["giga", "vgn", "targo", "targo_full_targ", "targo_hunyun2", 
                                  "FGC-GraspNet", "AnyGrasp", "AnyGrasp_full_targ", "FGC_full_targ"],
                         help="Model type: giga_hr | giga_aff | giga | vgn | targo | targo_full_targ | targo_hunyun2 | FGC-GraspNet | AnyGrasp | AnyGrasp_full_targ | FGC_full_targ")
-    parser.add_argument("--occlusion-level", type=str, choices=["no", "slight", "medium"], default="no",
+    parser.add_argument("--occlusion-level", type=str, choices=["no", "slight", "medium"], default="medium",
                         help="Occlusion level for the experiment: no, slight or medium.")
     parser.add_argument("--hunyun2_path", type=str, default=None,
                         help="Path to hunyun2 model.")
@@ -189,7 +190,7 @@ if __name__ == "__main__":
                         help="Optional experiment description.")
     parser.add_argument("--test_root", type=str,
                         default=None)
-    parser.add_argument("--model", type=Path, default='checkpoints/giga_packed.pt')
+    parser.add_argument("--model", type=Path, default='checkpoints/targonet.pt')
     parser.add_argument("--out_th", type=float, default=0.5,
                         help="Output threshold for valid grasps.")
     parser.add_argument("--scene", type=str, choices=["pile", "packed"], default="packed")
@@ -217,18 +218,18 @@ if __name__ == "__main__":
     # Set paths based on occlusion level
     if args.occlusion_level == "medium":
         if args.hunyun2_path is None:
-            args.hunyun2_path = '/usr/stud/dira/GraspInClutter/Gen3DSR/output_amodal/ycb_amodal_middle_occlusion_icp_v7_only_gt_1000'
+            args.hunyun2_path = '/usr/stud/dira/GraspInClutter/Gen3DSR/hunyuan_results/ycb/medium'
         if args.result_root is None:
-            args.result_root = 'targo_eval_results/ycb/eval_results_full-middle-occlusion'
+            args.result_root = 'targo_eval_results/ycb/eval_results_full-medium-occlusion'
         if args.logdir is None:
-            args.logdir = Path('targo_eval_results/ycb/eval_results_full-middle-occlusion')
+            args.logdir = Path('targo_eval_results/ycb/eval_results_full-medium-occlusion')
         if args.test_root is None:
             args.test_root = 'data_scenes/ycb/maniskill-ycb-v2-middle-occlusion-1000'
         if args.occ_level_dict is None:
-            args.occ_level_dict = 'data_scenes/ycb/maniskill-ycb-v2-middle-occlusion-1000/test_set/occ_level_dict.json'
+            args.occ_level_dict = 'data_scenes/ycb/maniskill-ycb-v2-middle-occlusion-1000/test_set/occlusion_level_dict.json'
     elif args.occlusion_level == "slight":
         if args.hunyun2_path is None:
-            args.hunyun2_path = '/usr/stud/dira/GraspInClutter/Gen3DSR/output_amodal/ycb_amodal_slight_occlusion_icp_v7_only_gt_1000'
+            args.hunyun2_path = '/usr/stud/dira/GraspInClutter/Gen3DSR/hunyuan_results/ycb/slight'
         if args.result_root is None:
             args.result_root = 'targo_eval_results/ycb/eval_results_full-slight-occlusion'
         if args.logdir is None:
@@ -236,10 +237,10 @@ if __name__ == "__main__":
         if args.test_root is None:
             args.test_root = 'data_scenes/ycb/maniskill-ycb-v2-slight-occlusion-1000'
         if args.occ_level_dict is None:
-            args.occ_level_dict = 'data_scenes/ycb/maniskill-ycb-v2-slight-occlusion-1000/test_set/occ_level_dict.json'
+            args.occ_level_dict = 'data_scenes/ycb/maniskill-ycb-v2-slight-occlusion-1000/test_set/occlusion_level_dict.json'
     elif args.occlusion_level == "no":
         if args.hunyun2_path is None:
-            args.hunyun2_path = '/usr/stud/dira/GraspInClutter/Gen3DSR/output_amodal/work/ycb_amodal_no_occlusion_icp_v7_only_gt_1000'
+            args.hunyun2_path = '/usr/stud/dira/GraspInClutter/Gen3DSR/hunyuan_results/ycb/no'
         if args.result_root is None:
             args.result_root = 'targo_eval_results/ycb/eval_results_full-no-occlusion'
         if args.logdir is None:
@@ -247,14 +248,14 @@ if __name__ == "__main__":
         if args.test_root is None:
             args.test_root = 'data_scenes/ycb/maniskill-ycb-v2-no-occlusion-1000'
         if args.occ_level_dict is None:
-            args.occ_level_dict = 'data_scenes/ycb/maniskill-ycb-v2-no-occlusion-1000/test_set/occ_level_dict.json'
+            args.occ_level_dict = 'data_scenes/ycb/maniskill-ycb-v2-no-occlusion-1000/test_set/occlusion_level_dict.json'
 
     # Removed unnecessary parameters:
     # --num-objects, --num-view, --num-rounds, --add-noise, --silence
 
     if args.logdir is None:
         if args.occlusion_level == "medium":
-            args.logdir = Path('targo_eval_results/ycb/eval_results_full-middle-occlusion')
+            args.logdir = Path('targo_eval_results/ycb/eval_results_full-medium-occlusion')
         elif args.occlusion_level == "slight":
             args.logdir = Path('targo_eval_results/ycb/eval_results_full-slight-occlusion')
         else:

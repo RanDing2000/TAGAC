@@ -3,7 +3,7 @@ import csv
 import os
 
 # 读取category.json文件
-json_file = 'eval_results_train_full-middle-occlusion-1000/category.json'
+json_file = 'eval_results_train_full-medium-occlusion-1000/category.json'
 with open(json_file, 'r') as f:
     category_map = json.load(f)
 

@@ -6,8 +6,8 @@ eval_results_test/
 eval_results_test_hunyuan2/
 eval_results_train/
 eval_results_train_full/
-eval_results_train_full-middle-occlusion/
-eval_results_train_full-middle-occlusion-1000/
+eval_results_train_full-medium-occlusion/
+eval_results_train_full-medium-occlusion-1000/
 eval_results_train_full-slight-occlusion/
 eval_results_train_full-slight-occlusion-1000/
 targo_eval_results/

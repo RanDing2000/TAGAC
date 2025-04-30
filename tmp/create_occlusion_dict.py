@@ -4,7 +4,7 @@ import glob
 import re
 
 # 定义目录路径
-mesh_pose_dir = "/usr/stud/dira/GraspInClutter/targo/data_scenes/ycb/maniskill-ycb-v2-no-occlusion-1000/mesh_pose_dict"
+mesh_pose_dir = "/usr/stud/dira/GraspInClutter/targo/data_scenes/acronym/acronym-middle-occlusion-1000/mesh_pose_dict"
 
 # 创建occlusion_level_dict
 occlusion_level_dict = {}
@@ -19,10 +19,10 @@ for npz_file in glob.glob(os.path.join(mesh_pose_dir, "*.npz")):
     match = re.match(r"(.+)_c_(\d+)", base_name)
     if match:
         # 将所有occlusion_level设置为0.0
-        occlusion_level_dict[base_name] = 0.0
+        occlusion_level_dict[base_name] = 0.4
 
 # 将字典保存为JSON文件
-output_file = "/usr/stud/dira/GraspInClutter/targo/data_scenes/ycb/maniskill-ycb-v2-no-occlusion-1000/occlusion_level_dict.json"
+output_file = "/usr/stud/dira/GraspInClutter/targo/data_scenes/acronym/acronym-middle-occlusion-1000/occlusion_level_dict.json"
 with open(output_file, 'w') as f:
     json.dump(occlusion_level_dict, f, indent=2)
 

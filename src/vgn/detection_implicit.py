@@ -133,7 +133,7 @@ def vis_grasps_target(target_gg, target_cloud, scene_cloud, anygrasp=False, fgc=
 def vis_grasps(gg, cloud, anygrasp=False, fgc=False):
     gg.nms()
     gg.sort_by_score()
-    # gg = gg[:50]
+    gg = gg[:50]
     grippers = gg.to_open3d_geometry_list()
     # o3d.visualization.draw_geometries([cloud, *grippers])
     # save as glb file, cloud and grippers
@@ -198,7 +198,7 @@ class VGNImplicit(object):
             parser = argparse.ArgumentParser()
             parser.add_argument('--checkpoint_path', default='/usr/stud/dira/GraspInClutter/targo/src/anygrasp_sdk/grasp_detection/log/checkpoint_detection.tar', help='Model checkpoint path')
             parser.add_argument('--max_gripper_width', type=float, default=0.08, help='Maximum gripper width (<=0.1m)')
-            parser.add_argument('--gripper_height', type=float, default=0.045, help='Gripper height')
+            parser.add_argument('--gripper_height', type=float, default=0.03, help='Gripper height')
             parser.add_argument('--top_down_grasp', action='store_true', help='Output top-down grasps.')
             parser.add_argument('--debug', action='store_true', help='Enable debug mode')
             cfgs = parser.parse_args([])  # Empty list to avoid reading command line args
@@ -347,8 +347,8 @@ class VGNImplicit(object):
         elif state.type == 'AnyGrasp' or state.type == 'AnyGrasp_full_targ':
             if state.type == 'AnyGrasp_full_targ':
                 inputs = np.concatenate((state.targ_full_pc, state.scene_no_targ_pc), axis=0)
-                plane_hs = np.load('/usr/stud/dira/GraspInClutter/targo/data/plane_hs.npy')
-                inputs = np.concatenate((inputs, plane_hs), axis=0)
+                # plane_hs = np.load('/usr/stud/dira/GraspInClutter/targo/data/plane_hs.npy')
+                # inputs = np.concatenate((inputs, plane_hs), axis=0)
                 save_point_cloud_as_ply(inputs, 'scene_pc.ply')
             else:
                 inputs = state.scene_pc
@@ -404,12 +404,12 @@ class VGNImplicit(object):
             g1b_vis_dict['target_gg'] = target_gg
         begin = time.time()
 
-        if state.type != 'FGC-GraspNet' and state.type != 'AnyGrasp' and state.type != 'AnyGrasp_full_targ':
+        if state.type != 'FGC-GraspNet' and state.type != 'AnyGrasp' and state.type != 'AnyGrasp_full_targ' and state.type != 'FGC_full_targ':
             qual_vol = qual_vol.reshape((self.resolution, self.resolution, self.resolution))
             rot_vol = rot_vol.reshape((self.resolution, self.resolution, self.resolution, 4))
             width_vol = width_vol.reshape((self.resolution, self.resolution, self.resolution))
 
-        if state.type == 'FGC-GraspNet' or state.type == 'AnyGrasp' or state.type == 'AnyGrasp_full_targ':
+        if state.type == 'FGC-GraspNet' or state.type == 'AnyGrasp' or state.type == 'AnyGrasp_full_targ' or state.type == 'FGC_full_targ':
             # Check if there are valid grasps
             if len(target_gg) == 0 or np.max(target_gg.scores) < 0.0:
                 print(f"Warning: {state.type} did not find valid target grasps")
@@ -529,7 +529,7 @@ class VGNImplicit(object):
                     print(f"  - Grasp visualization: {os.path.basename(grasp_vis_path)}")
             
             # Convert grasps from target_gg to VGN format
-            if state.type == 'FGC-GraspNet':
+            if state.type == 'FGC-GraspNet' or state.type == 'FGC_full_targ':
                 print(f"Converting {len(target_gg)} FGC-GraspNet grasps to VGN format")
                 # Use workspace_size if available in state
                 workspace_size = state.tsdf.size if hasattr(state, 'tsdf') and hasattr(state.tsdf, 'size') else None
@@ -584,7 +584,7 @@ class VGNImplicit(object):
                 os.makedirs('demo')
             
             # 直接使用模型类型作为文件名前缀
-            model_type = "fgc" if state.type == "FGC-GraspNet" else "anygrasp"
+            # model_type = "fgc" if state.type == "FGC-GraspNet" else "anygrasp"
             
             # 使用VGN可视化函数
             from src.vgn.utils.visual import vis_grasps_target_vgn
@@ -593,7 +593,7 @@ class VGNImplicit(object):
                 scores=scores,
                 target_cloud=g1b_vis_dict['target_pc'],
                 scene_cloud=g1b_vis_dict['scene_pc'],
-                output_prefix=f"demo/{model_type}"
+                output_prefix=f"demo/{state.type}"
             )
             
             # Print information about the converted grasps
@@ -745,7 +745,7 @@ def predict(inputs, pos, net, sc_net, type, device, visual_dict=None, hunyun2_pa
 
             if type == 'targo_hunyun2':
                 start_pc = time.time()
-                # hunyun2_path = '/usr/stud/dira/GraspInClutter/Gen3DSR/output_amodal/ycb_amodal_middle_occlusion_icp_v7_only_gt_1000'
+                # hunyun2_path = '/usr/stud/dira/GraspInClutter/Gen3DSR/output_amodal/ycb_amodal_medium_occlusion_icp_v7_only_gt_1000'
                 scene_path = hunyun2_path + '/' + scene_name + '/reconstruction/targ_obj_hy3dgen_align.ply'
                 meta_eval_path = hunyun2_path + '/' + scene_name + '/evaluation/meta_evaluation.txt'
                 if os.path.exists(meta_eval_path):
@@ -765,7 +765,8 @@ def predict(inputs, pos, net, sc_net, type, device, visual_dict=None, hunyun2_pa
                 # Sample points from mesh using FPS (Farthest Point Sampling)
                 completed_targ_pc = completed_targ_mesh.sample(2048)
                 completed_targ_pc = completed_targ_pc.astype(np.float32)    
-                completed_targ_grid = point_cloud_to_tsdf(completed_targ_pc)
+                # completed_targ_grid = point_cloud_to_tsdf(completed_targ_pc)
+                completed_targ_grid = mesh_to_tsdf(completed_targ_mesh)
 
                 completed_targ_pc = torch.from_numpy(completed_targ_pc).to(device).unsqueeze(0)
                 # completed_targ_pc_rs = completed_targ_pc 
@@ -826,7 +827,7 @@ def predict(inputs, pos, net, sc_net, type, device, visual_dict=None, hunyun2_pa
             if isinstance(inputs, np.ndarray):
                 inputs = torch.from_numpy(inputs).float()
             
-            inputs = inputs / 0.3 - 0.5
+            # inputs = inputs / 0.3 - 0.5 ## this is important
             
             # Make sure inputs is a batch
             if len(inputs.shape) == 2:
@@ -836,6 +837,8 @@ def predict(inputs, pos, net, sc_net, type, device, visual_dict=None, hunyun2_pa
             cloud = inputs
             # Convert PyTorch tensor to numpy array
             cloud_np = inputs[0].cpu().numpy()
+            plane_hs = np.load('/usr/stud/dira/GraspInClutter/targo/data/plane_hs.npy')
+            cloud_np = np.concatenate((cloud_np, plane_hs), axis=0)
             # Create open3d point cloud object
             cloud = o3d.geometry.PointCloud()
             # Set points for the point cloud
@@ -849,15 +852,15 @@ def predict(inputs, pos, net, sc_net, type, device, visual_dict=None, hunyun2_pa
             # inputs = inputs.squeeze(0)
             end_points['point_clouds'] = inputs
             gg = get_grasps(net, end_points)
-            mask = gg.scores > 0.0
-            gg = gg[mask]
+            # mask = gg.scores > 0.0
+            # gg = gg[mask]
             # gg = collision_detection(gg, np.array(cloud.points))
             # gg = net(end_points)
             vis_grasps(gg, cloud, anygrasp=False, fgc=True)
             print(gg)
         elif type == 'AnyGrasp' or type == 'AnyGrasp_full_targ':
             points = inputs # [0,0.3]
-            inputs = inputs / 0.3 - 0.5
+            # inputs = inputs / 0.3 - 0.5
             colors = np.zeros_like(points) 
             
             # Create an Open3D point cloud object
@@ -878,7 +881,7 @@ def predict(inputs, pos, net, sc_net, type, device, visual_dict=None, hunyun2_pa
             lims = [xmin, xmax, ymin, ymax, zmin, zmax]
             points = points.astype(np.float32)
             colors = colors.astype(np.float32)
-            gg, cloud = net.get_grasp(points, colors, lims=lims, apply_object_mask=True, dense_grasp=False, collision_detection=True)
+            gg, cloud = net.get_grasp(points, colors, lims=lims, apply_object_mask=True, dense_grasp=False, collision_detection=False)
             print(gg)
             # gg = get_grasps(net, end_points)
             vis_grasps(gg, cloud_o3d, anygrasp=True, fgc=False)
@@ -930,7 +933,7 @@ def predict(inputs, pos, net, sc_net, type, device, visual_dict=None, hunyun2_pa
     print(f"Total time: {total_time:.3f}s")
 
     # move output back to the CPU
-    if type != 'AnyGrasp' and type != 'FGC-GraspNet' and type != 'AnyGrasp_full_targ':
+    if type != 'AnyGrasp' and type != 'FGC-GraspNet' and type != 'AnyGrasp_full_targ' and type != 'FGC_full_targ':
         qual_vol = qual_vol.cpu().squeeze().numpy()
         rot_vol = rot_vol.cpu().squeeze().numpy()
         width_vol = width_vol.cpu().squeeze().numpy()
