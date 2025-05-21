@@ -11,6 +11,7 @@ eval_results_train_full-medium-occlusion-1000/
 eval_results_train_full-slight-occlusion/
 eval_results_train_full-slight-occlusion-1000/
 targo_eval_results/
+data_scenes/
 demo/
 *.png
 *.pdf
