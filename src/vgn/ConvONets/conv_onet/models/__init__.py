@@ -58,6 +58,9 @@ class ConvolutionalOccupancyNetwork_Grid(nn.Module):
         if model_type == "targo":
             self.encoder_in = encoders_in[0].to(device)
         
+        if model_type == "targo_ptv3":
+            self.encoder_in = encoders_in[0].to(device)
+        
         self.encoder_aff = encoder_aff.to(device)
         self._device = device
 
@@ -81,6 +84,8 @@ class ConvolutionalOccupancyNetwork_Grid(nn.Module):
 
         if self.model_type == "targo":
             features_fused =  self.encoder_in(inputs[0], inputs[1])
+        elif self.model_type == "targo_ptv3":
+            features_fused = self.encoder_in(inputs[0], inputs[1])
 
         c = self.encoder_aff(features_fused)
         qual, rot, width = self.decode(p, c)   

@@ -351,7 +351,7 @@ def main(args):
         scene_name = curr_mesh_pose_list[:-4]
         scene_id = scene_name.split('_c_')[0]
         npz_scene_name  = scene_name + '.npz'
-        scene_root = '/usr/stud/dira/GraspInClutter/targo/data_scenes/acronym/acronym-middle-occlusion-1000/scenes'
+        scene_root = '/usr/stud/dira/GraspInClutter/targo/data_scenes/acronym/acronym-slight-occlusion-1000/scenes'
         scene_path = os.path.join(scene_root, npz_scene_name)
         if os.path.exists(scene_path):
             continue
@@ -445,7 +445,7 @@ def generate_scenes(sim,tgt_id, scene_id):
         occ_level_c = 1 - count_cluttered[target_id] / count_single
 
         # assert 0.3 <= occ_level_c <= 0.5
-        if 0.3 <= occ_level_c <= 0.5:
+        if 0 < occ_level_c <= 0.3:
             process_and_store_scene_data(sim, scene_id, target_id, noisy_depth_side_c, seg_side_c, extr_side_c, args, occ_level_c)
         
         sim.world.remove_body(target_body)
@@ -457,7 +457,7 @@ def generate_scenes(sim,tgt_id, scene_id):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--root",type=Path, default= '/usr/stud/dira/GraspInClutter/targo/data_scenes/acronym/acronym-middle-occlusion-1000')
+    parser.add_argument("--root",type=Path, default= '/usr/stud/dira/GraspInClutter/targo/data_scenes/acronym/acronym-slight-occlusion-1000')
     parser.add_argument("--scene", type=str, choices=["pile", "packed"], default="packed")
     parser.add_argument("--object-set", type=str, default="packed/train")
     parser.add_argument("--num-grasps", type=int, default=10000)

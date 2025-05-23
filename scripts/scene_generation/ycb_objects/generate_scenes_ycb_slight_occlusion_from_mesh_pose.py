@@ -129,19 +129,8 @@ def process_test_scene(sim, test_mesh_pose_list, test_scenes, scene_name, curr_m
         if file_basename == 'plane.obj':
             urdf_path = mesh_info[0].replace(".obj", ".urdf")
         else:
-            file_id = file_basename.replace("_textured.obj", "").replace(".obj", "")
+            urdf_path = mesh_info[0].replace("_textured.obj", ".urdf")
             
-            urdf_base_dir = "/usr/stud/dira/GraspInClutter/targo/data/acronym/urdfs_acronym"
-            
-            # Method 1: Directly build path (if no category prefix)
-            urdf_path = f"{urdf_base_dir}/{file_id}.urdf"
-            
-            # Method 2: If category prefix exists, use glob to find matching files
-            if not os.path.exists(urdf_path):
-                import glob
-                matching_files = glob.glob(f"{urdf_base_dir}/*_{file_id}.urdf")
-                if matching_files:
-                    urdf_path = matching_files[0]  # Use the first matching file found
         body = sim.world.load_urdf(
                 urdf_path=urdf_path,
                 pose=pose,
@@ -336,7 +325,7 @@ def render_side_images(sim, n=1, random=False, segmentation=False):
         return depth_imgs, extrinsics
         
 def main(args):
-    sim = ClutterRemovalSim(args.scene, args.object_set, gui=args.sim_gui, is_acronym=True)
+    sim = ClutterRemovalSim(args.scene, args.object_set, gui=args.sim_gui, is_acronym=False)
     finger_depth = sim.gripper.finger_depth
     
     path_scenes_known = f'{args.root}/scenes_known'
@@ -351,7 +340,7 @@ def main(args):
         scene_name = curr_mesh_pose_list[:-4]
         scene_id = scene_name.split('_c_')[0]
         npz_scene_name  = scene_name + '.npz'
-        scene_root = '/usr/stud/dira/GraspInClutter/targo/data_scenes/acronym/acronym-middle-occlusion-1000/scenes'
+        scene_root = '/usr/stud/dira/GraspInClutter/targo/data_scenes/ycb/maniskill-ycb-v2-slight-occlusion-1000/scenes'
         scene_path = os.path.join(scene_root, npz_scene_name)
         if os.path.exists(scene_path):
             continue
@@ -445,7 +434,7 @@ def generate_scenes(sim,tgt_id, scene_id):
         occ_level_c = 1 - count_cluttered[target_id] / count_single
 
         # assert 0.3 <= occ_level_c <= 0.5
-        if 0.3 <= occ_level_c <= 0.5:
+        if 0 < occ_level_c <= 0.3:
             process_and_store_scene_data(sim, scene_id, target_id, noisy_depth_side_c, seg_side_c, extr_side_c, args, occ_level_c)
         
         sim.world.remove_body(target_body)
@@ -457,7 +446,7 @@ def generate_scenes(sim,tgt_id, scene_id):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--root",type=Path, default= '/usr/stud/dira/GraspInClutter/targo/data_scenes/acronym/acronym-middle-occlusion-1000')
+    parser.add_argument("--root",type=Path, default= '/usr/stud/dira/GraspInClutter/targo/data_scenes/ycb/maniskill-ycb-v2-slight-occlusion-1000')
     parser.add_argument("--scene", type=str, choices=["pile", "packed"], default="packed")
     parser.add_argument("--object-set", type=str, default="packed/train")
     parser.add_argument("--num-grasps", type=int, default=10000)
@@ -467,8 +456,8 @@ if __name__ == "__main__":
     parser.add_argument("--sim-gui", action="store_true", default=False)
     parser.add_argument("--add-noise", type=str, default='norm', help = "norm_0.005 | norm | dex")
     parser.add_argument("--num-proc", type=int, default=2, help="Number of processes to use")
-    parser.add_argument("--is-acronym", action="store_true", default=True)
-    parser.add_argument("--is-ycb", action="store_true", default=False)
+    parser.add_argument("--is-acronym", action="store_true", default=False)
+    parser.add_argument("--is-ycb", action="store_true", default=True)
     parser.add_argument("--is-egad", action="store_true", default=False)
     parser.add_argument("--is-g1b", action="store_true", default=False)
 

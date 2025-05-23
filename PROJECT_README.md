@@ -55,6 +55,14 @@
 - **YCB Testing Script**: `scripts/inference_ycb.py`
 
 ```
+chmod +x ./scripts/eval_ycb_parallel.sh
+./scripts/eval_ycb_parallel.sh
+tmux list-windows -t eval_parallel_ycb
+tmux attach-session -t eval_parallel_ycb \; select-window -t job_3 # watch the job_3
+tmux list-windows -t eval_parallel_acronym
+```
+
+```
 ## Environment Setup
 conda activate targo
 module load cuda/11.3.0

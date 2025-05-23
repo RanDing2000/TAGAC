@@ -37,7 +37,7 @@ from src.FGCGraspNet.models.decode import pred_decode
 from graspnetAPI import GraspGroup
 import sys
 sys.path.append('/usr/stud/dira/GraspInClutter/targo/src/anygrasp_sdk/grasp_detection')
-from gsnet import AnyGrasp
+# from gsnet import AnyGrasp
 from graspnetAPI import GraspGroup
 LOW_TH = 0.0
 

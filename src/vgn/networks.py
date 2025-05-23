@@ -3,7 +3,7 @@ from builtins import super
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from src.vgn.ConvONets.conv_onet.config import get_model, get_model_targo
+from src.vgn.ConvONets.conv_onet.config import get_model, get_model_targo, get_model_targo_ptv3
 
 def get_network(name):
     models = {
@@ -15,6 +15,7 @@ def get_network(name):
         "targo":TARGONet,
         "targo_full_targ": TARGONet,
         "targo_hunyun2": TARGONet,
+        "targo_ptv3": TARGOPtv3Net,
     }
     return models[name.lower()]()
 
@@ -234,6 +235,52 @@ def TARGONet():
     }
     
     return get_model_targo(config)
+
+def TARGOPtv3Net():
+    """
+    TARGO network using PointTransformerV3 as encoder instead of TransformerFusionModel
+    """
+    config = {
+        'model_type': 'targo_ptv3',
+        'd_model': 64,  # Increased to match PTv3 output
+        'cross_att_key': 'pointnet_cross_attention',
+        'num_attention_layers': 0,  # No transformer fusion layers needed
+        'attention_params': {},  # Empty since we use PTv3
+        'return_intermediate': False,
+        'encoder': 'voxel_simple_local_without_3d',
+
+        'encoder_kwargs': {
+            'plane_type': ['xz', 'xy', 'yz'],
+            'plane_resolution': 40,
+            'grid_resolution': 40,
+            'in_channels_scale': 2,
+            'unet3d': False,
+            'unet3d_kwargs':{
+                'num_levels': 3,
+                'f_maps': 64,
+                'in_channels': 64,
+                'out_channels': 64
+            },
+            'unet': True,
+            'unet_kwargs': {
+                'depth': 3,
+                'merge_mode': 'concat',
+                'start_filts': 32 
+            }
+        },
+        'decoder': 'simple_local',
+        'decoder_tsdf': False,
+        'decoder_kwargs': {
+            'dim': 3,
+            'sample_mode': 'bilinear',
+            'hidden_size': 64,
+            'concat_feat': True
+        },
+        'padding': 0,
+        'c_dim': 64
+    }
+    
+    return get_model_targo_ptv3(config)
 
 
 class Encoder(nn.Module):

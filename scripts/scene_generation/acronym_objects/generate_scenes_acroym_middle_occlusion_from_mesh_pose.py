@@ -348,6 +348,8 @@ def main(args):
     # list all the npz files in path_mesh_pose_dict
     npz_files = [f for f in os.listdir(path_mesh_pose_dict) if f.endswith('.npz')]
     for curr_mesh_pose_list in npz_files:
+        if curr_mesh_pose_list != '23eada9a4dc146cf929027718a416dfe_c_1.npz':
+            continue
         scene_name = curr_mesh_pose_list[:-4]
         scene_id = scene_name.split('_c_')[0]
         npz_scene_name  = scene_name + '.npz'

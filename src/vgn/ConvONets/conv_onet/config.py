@@ -8,6 +8,74 @@ from src.vgn.ConvONets.conv_onet import generation
 from src.vgn.ConvONets import data
 from src.vgn.ConvONets.common import decide_total_volume_range, update_reso
 from src.transformer.fusion_model import TransformerFusionModel
+from src.transformer.ptv3_fusion_model import PointTransformerV3FusionModel
+
+def get_model_targo_ptv3(cfg, device=None, dataset=None, **kwargs):
+    ''' Return the TARGO model with PointTransformerV3 encoder.
+
+    Args:
+        cfg (dict): imported yaml config 
+        device (device): pytorch device
+        dataset (dataset): dataset
+    '''
+    decoder = cfg['decoder']
+    encoder = cfg['encoder']
+    c_dim = cfg['c_dim']
+    decoder_kwargs = cfg['decoder_kwargs']
+    encoder_kwargs = cfg['encoder_kwargs']
+    padding = cfg['padding']
+    if padding is None:
+        padding = 0.1
+    
+    # for pointcloud_crop
+    try: 
+        encoder_kwargs['unit_size'] = cfg['data']['unit_size']
+        decoder_kwargs['unit_size'] = cfg['data']['unit_size']
+    except:
+        pass
+    # local positional encoding
+    if 'local_coord' in cfg.keys():
+        encoder_kwargs['local_coord'] = cfg['local_coord']
+        decoder_kwargs['local_coord'] = cfg['local_coord']
+    if 'pos_encoding' in cfg:
+        encoder_kwargs['pos_encoding'] = cfg['pos_encoding']
+        decoder_kwargs['pos_encoding'] = cfg['pos_encoding']
+
+    tsdf_only = 'tsdf_only' in cfg.keys() and cfg['tsdf_only']
+    detach_tsdf = 'detach_tsdf' in cfg.keys() and cfg['detach_tsdf']
+
+    if tsdf_only:
+        decoders = []
+    else:
+        out_dim_qual, out_dim_rot, out_dim_width = 1,4,1
+        decoder_qual = models.decoder_dict[decoder](
+            c_dim=c_dim, padding=padding, out_dim=out_dim_qual, 
+            **decoder_kwargs
+        )
+        decoder_rot = models.decoder_dict[decoder](
+            c_dim=c_dim, padding=padding, out_dim=out_dim_rot,
+            **decoder_kwargs
+        )
+        decoder_width = models.decoder_dict[decoder](
+            c_dim=c_dim, padding=padding, out_dim=out_dim_width,
+            **decoder_kwargs
+        )
+        
+        decoders = [decoder_qual, decoder_rot, decoder_width]
+
+    # Use PointTransformerV3FusionModel instead of TransformerFusionModel
+    encoder_in = PointTransformerV3FusionModel()
+    
+    encoder_aff_scene = encoder_dict[encoder](
+        c_dim=c_dim, padding=padding,
+        **encoder_kwargs
+    )
+    encoders_in = [encoder_in]
+    
+    model = models.ConvolutionalOccupancyNetwork_Grid(
+        decoders, encoders_in, encoder_aff_scene, device=device, 
+        detach_tsdf=detach_tsdf, model_type='targo_ptv3')
+    return model
 
 def get_model_targo(cfg, device=None, dataset=None, **kwargs):
     ''' Return the Occupancy Network model.
