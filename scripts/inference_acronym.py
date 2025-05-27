@@ -103,14 +103,15 @@ def main(args):
     """
     # Choose VGN or VGNImplicit depending on 'args.type'
     if args.type == 'vgn':
-        grasp_planner = VGN( # it's not used in this scrifpt
+        grasp_planner = VGN(
             args.model,
             args.type,
             best=args.best,
             qual_th=args.qual_th,
             force_detection=args.force,
-            out_th=args.out_th if hasattr(args, 'out_th') and args.out_th is not None else 0.5,  # Use args.out_th if provided, otherwise default to 0.5
-            visualize=args.vis
+            out_th=args.out_th if hasattr(args, 'out_th') and args.out_th is not None else 0.5,
+            visualize=args.vis,
+            cd_iou_measure=True
         )
     elif args.type in ['giga', 'giga_aff', 'giga_hr', 'targo', 'targo_full_targ', 'targo_hunyun2', 'FGC-GraspNet', 'AnyGrasp']:
         grasp_planner = VGNImplicit(
@@ -119,7 +120,7 @@ def main(args):
             best=args.best,
             qual_th=args.qual_th,
             force_detection=args.force,
-            out_th=args.out_th if hasattr(args, 'out_th') and args.out_th is not None else 0.5,  # Use args.out_th if provided, otherwise default to 0.5
+            out_th=args.out_th if hasattr(args, 'out_th') and args.out_th is not None else 0.5,
             select_top=False,
             visualize=args.vis,
             cd_iou_measure=True,

@@ -747,6 +747,7 @@ def predict(inputs, pos, net, sc_net, type, device, visual_dict=None, hunyun2_pa
                 start_pc = time.time()
                 # hunyun2_path = '/usr/stud/dira/GraspInClutter/Gen3DSR/output_amodal/ycb_amodal_medium_occlusion_icp_v7_only_gt_1000'
                 scene_path = hunyun2_path + '/' + scene_name + '/reconstruction/targ_obj_hy3dgen_align.ply'
+                gt_scene_path = hunyun2_path + '/' + scene_name + '/reconstruction/gt_targ_obj.ply'
                 meta_eval_path = hunyun2_path + '/' + scene_name + '/evaluation/meta_evaluation.txt'
                 if os.path.exists(meta_eval_path):
                     with open(meta_eval_path, 'r') as f:
@@ -760,8 +761,16 @@ def predict(inputs, pos, net, sc_net, type, device, visual_dict=None, hunyun2_pa
                             print(f"CD: {cd:.4f}, IoU: {iou:.4f}")
                 # scene_mesh = trimesh.load(scene_path)
                 completed_targ_mesh = trimesh.load(scene_path)
+                gt_scene_mesh = trimesh.load(gt_scene_path)
+                completed_targ_mesh.export('completed_targ_mesh.obj')
+                gt_scene_mesh.export('gt_scene_mesh.obj')
+
                 # completed_targ_grid =  mesh_to_tsdf(completed_targ_mesh)
-                save_point_cloud_as_ply(completed_targ_mesh.vertices, 'completed_targ_mesh.ply')
+                # save_point_cloud_as_ply(completed_targ_mesh, 'completed_targ_mesh.obj')
+                # save_point_cloud_as_ply(gt_scene_path, 'gt_scene_mesh.obj')
+                ## save obj
+                # save_mesh_as_ply(completed_targ_mesh, 'completed_targ_mesh.ply')
+                # save_mesh_as_ply(gt_scene_path, 'gt_scene_mesh.ply')
                 # Sample points from mesh using FPS (Farthest Point Sampling)
                 completed_targ_pc = completed_targ_mesh.sample(2048)
                 completed_targ_pc = completed_targ_pc.astype(np.float32)    

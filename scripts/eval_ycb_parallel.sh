@@ -10,21 +10,21 @@ tmux new-session -d -s $SESSION
 
 # 所有命令列表
 commands=(
-  "python scripts/inference_ycb.py --type targo --model 'checkpoints/targonet.pt' --occlusion-level no"
+  # "python scripts/inference_ycb.py --type targo --model 'checkpoints/targonet.pt' --occlusion-level no"
   "python scripts/inference_ycb.py --type targo --model 'checkpoints/targonet.pt' --occlusion-level slight"
-  "python scripts/inference_ycb.py --type targo --model 'checkpoints/targonet.pt' --occlusion-level medium"
+  # "python scripts/inference_ycb.py --type targo --model 'checkpoints/targonet.pt' --occlusion-level medium"
 
-  "python scripts/inference_ycb.py --type targo_hunyun2 --model 'checkpoints/targonet.pt' --occlusion-level no"
+  # "python scripts/inference_ycb.py --type targo_hunyun2 --model 'checkpoints/targonet.pt' --occlusion-level no"
   "python scripts/inference_ycb.py --type targo_hunyun2 --model 'checkpoints/targonet.pt' --occlusion-level slight"
-  "python scripts/inference_ycb.py --type targo_hunyun2 --model 'checkpoints/targonet.pt' --occlusion-level medium"
+  # "python scripts/inference_ycb.py --type targo_hunyun2 --model 'checkpoints/targonet.pt' --occlusion-level medium"
 
-  "python scripts/inference_ycb.py --type giga --model 'checkpoints/giga_packed.pt' --occlusion-level no"
+  # "python scripts/inference_ycb.py --type giga --model 'checkpoints/giga_packed.pt' --occlusion-level no"
   "python scripts/inference_ycb.py --type giga --model 'checkpoints/giga_packed.pt' --occlusion-level slight"
-  "python scripts/inference_ycb.py --type giga --model 'checkpoints/giga_packed.pt' --occlusion-level medium"
+  # "python scripts/inference_ycb.py --type giga --model 'checkpoints/giga_packed.pt' --occlusion-level medium"
 
-  "python scripts/inference_ycb.py --type vgn --model 'checkpoints/vgn_packed.pt' --occlusion-level no"
+  # "python scripts/inference_ycb.py --type vgn --model 'checkpoints/vgn_packed.pt' --occlusion-level no"
   "python scripts/inference_ycb.py --type vgn --model 'checkpoints/vgn_packed.pt' --occlusion-level slight"
-  "python scripts/inference_ycb.py --type vgn --model 'checkpoints/vgn_packed.pt' --occlusion-level medium"
+  # "python scripts/inference_ycb.py --type vgn --model 'checkpoints/vgn_packed.pt' --occlusion-level medium"
 )
 
 # 创建窗口并执行每个命令

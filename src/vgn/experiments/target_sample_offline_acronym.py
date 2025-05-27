@@ -448,13 +448,13 @@ def run(
                 "iou": float(iou)
             }
         elif model_type == 'vgn':
-            grasps, scores, timings["planning"] = grasp_plan_fn(state, scene_mesh)
+            grasps, scores, timings["planning"], cd, iou = grasp_plan_fn(state, scene_mesh, cd_iou_measure=True, target_mesh_gt=target_mesh_gt)
             scene_metrics[scene_name] = {
                 "target_name": targ_name,
                 "occlusion_level": float(occ_level),
-                "cd": '0',
-                "iou": '0'
-            }   
+                "cd": float(cd),
+                "iou": float(iou)
+            }
 
         planning_times.append(timings["planning"])
         total_times.append(timings["planning"] + timings["integration"])

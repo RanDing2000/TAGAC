@@ -26,7 +26,7 @@ if VIS:
 
 
 class VGN(object):
-    def __init__(self, model_path, model_type, best=False, force_detection=False, qual_th=0.9, out_th=0.5, visualize=False):
+    def __init__(self, model_path, model_type, best=False, force_detection=False, qual_th=0.9, out_th=0.5, visualize=False, cd_iou_measure=False):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.net = load_network(model_path, self.device, model_type=model_type)
         self.net.eval()
@@ -35,9 +35,10 @@ class VGN(object):
         self.force_detection = force_detection
         self.out_th = out_th
         self.visualize = visualize
+        self.cd_iou_measure = cd_iou_measure
 
 
-    def __call__(self, state, scene_mesh=None, aff_kwargs={}, hunyun2_path=None, scene_name=None):
+    def __call__(self, state, scene_mesh=None, aff_kwargs={}, hunyun2_path=None, scene_name=None, cd_iou_measure=False, target_mesh_gt=None):
         if isinstance(state.tsdf, np.ndarray):
             tsdf_vol = state.tsdf
             voxel_size = 0.3 / 40
@@ -89,14 +90,26 @@ class VGN(object):
             grasps = [from_voxel_coordinates(g, voxel_size) for g in grasps[p]]
             scores = scores[p]
 
+        # Initialize default CD and IoU values for VGN
+        cd = 0.0
+        iou = 0.0
+
         if self.visualize:
             grasp_mesh_list = [visual.grasp2mesh(g, s) for g, s in zip(grasps, scores)]
             composed_scene = trimesh.Scene(colored_scene_mesh)
             for i, g_mesh in enumerate(grasp_mesh_list):
                 composed_scene.add_geometry(g_mesh, node_name=f'grasp_{i}')
-            return grasps, scores, toc, composed_scene
+            # Return consistent format with VGNImplicit when cd_iou_measure is True
+            if self.cd_iou_measure or cd_iou_measure:
+                return grasps, scores, toc, cd, iou
+            else:
+                return grasps, scores, toc, composed_scene
         else:
-            return grasps, scores, toc
+            # Return consistent format with VGNImplicit when cd_iou_measure is True
+            if self.cd_iou_measure or cd_iou_measure:
+                return grasps, scores, toc, cd, iou
+            else:
+                return grasps, scores, toc
 
 def bound(qual_vol, voxel_size, limit=[0.02, 0.02, 0.055]):
     # avoid grasp out of bound [0.02  0.02  0.055]

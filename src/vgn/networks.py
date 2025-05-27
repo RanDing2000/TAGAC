@@ -3,7 +3,7 @@ from builtins import super
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from src.vgn.ConvONets.conv_onet.config import get_model, get_model_targo, get_model_targo_ptv3
+from src.vgn.ConvONets.conv_onet.config import get_model, get_model_targo, get_model_targo_ptv3, get_model_ptv3_scene
 
 def get_network(name):
     models = {
@@ -16,6 +16,7 @@ def get_network(name):
         "targo_full_targ": TARGONet,
         "targo_hunyun2": TARGONet,
         "targo_ptv3": TARGOPtv3Net,
+        "ptv3_scene": Ptv3SceneNet,
     }
     return models[name.lower()]()
 
@@ -281,6 +282,37 @@ def TARGOPtv3Net():
     }
     
     return get_model_targo_ptv3(config)
+
+def Ptv3SceneNet():
+    """
+    Network configuration for PTv3 Scene model - only processes scene point cloud.
+    """
+    cfg = {
+        'model_type': 'ptv3_scene',
+        'd_model': 64,
+        'cross_att_key': 'pointnet_cross_attention',
+        'num_attention_layers': 0,
+        'encoder': 'voxel_simple_local_without_3d',
+        'encoder_kwargs': {
+            'plane_type': ['xz', 'xy', 'yz'],
+            'plane_resolution': 40,
+            'unet': True,
+            'unet_kwargs': {
+                'depth': 4,
+                'merge_mode': 'concat',
+                'start_filts': 32
+            },
+        },
+        'decoder': 'simple_local',
+        'decoder_kwargs': {
+            'sample_mode': 'bilinear',
+            'hidden_size': 32,
+        },
+        'padding': 0,
+        'c_dim': 64,
+    }
+    
+    return get_model_ptv3_scene(cfg)
 
 
 class Encoder(nn.Module):

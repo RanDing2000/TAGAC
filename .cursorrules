@@ -34,11 +34,24 @@
 Only analyze .py code files in the project, no need to analyze .gitignore file
 
 ## 0. Environment Setup
+
+### Original TARGO Models (targo, targo_full)
 - Project uses conda environment named 'targo'
 - Always activate environment before working: conda activate targo
 - Load required modules:
   - module load compiler/gcc-8.3
   - module load cuda/11.3.0
+
+### PointTransformerV3-based Variants (targo_ptv3, ptv3_scene)
+- Project uses conda environment named 'ptv3'
+- Always activate environment before working: conda activate ptv3
+- Load required modules:
+  - module load cuda/12.1.0
+
+### Environment Selection Guidelines
+- For original TARGO models (targo, targo_full): Use 'targo' environment with CUDA 11.3.0
+- For PointTransformerV3 variants (targo_ptv3, ptv3_scene): Use 'ptv3' environment with CUDA 12.1.0
+- For other models (GIGA, VGN, etc.): Use 'targo' environment with CUDA 11.3.0
 
 ## 1. Code Language Consistency
 - Always keep code comments and text in one language (preferably English)
@@ -143,8 +156,121 @@ These practices help maintain code quality and reproducibility across projects.
   2. Use widely available packages when possible
   3. Document any special installation requirements
 
+## [2024-12-19] Model Interface Standardization
+- Problem Description:
+  - VGN model had inconsistent interface compared to other models (GIGA, TARGO, etc.)
+  - VGN couldn't generate category success rate statistics due to different parameter signatures and return values
+  - VGN.__init__ lacked cd_iou_measure parameter
+  - VGN.__call__ lacked cd_iou_measure and target_mesh_gt parameters
+  - VGN returned different number of values compared to other models
+
+- Solution:
+  - Added cd_iou_measure parameter to VGN.__init__ with default value False
+  - Added cd_iou_measure and target_mesh_gt parameters to VGN.__call__
+  - Modified VGN.__call__ to return consistent format (5 values when cd_iou_measure=True)
+  - Updated inference_acronym.py to initialize VGN with cd_iou_measure=True
+  - Updated target_sample_offline_acronym.py to call VGN with proper parameters
+  - Set default CD=0.0 and IoU=0.0 for VGN since it doesn't do shape reconstruction
+
+- Lessons Learned:
+  - Model interfaces should be standardized across the codebase for consistency
+  - When adding new evaluation metrics, ensure all models support the same interface
+  - Backward compatibility should be maintained when modifying existing interfaces
+  - Different model types may have different capabilities (VGN doesn't do shape reconstruction)
+  - Proper documentation is crucial when modifying model interfaces
+
+- Prevention Measures:
+  1. Define standard interfaces for all model types at the beginning of development
+  2. Use abstract base classes or protocols to enforce consistent interfaces
+  3. Create comprehensive tests to verify interface compatibility
+  4. Document all model interface requirements clearly
+  5. Use type hints to make interface expectations explicit
+  6. Consider using factory patterns for model creation to ensure consistency
+
+## [2024-12-19] Offline Complete Target Mesh Preprocessing
+- Problem Description:
+  - Training with complete target meshes required real-time generation from mesh_pose_dict
+  - This was inefficient and could cause training bottlenecks
+  - Real-time mesh loading and point cloud sampling added overhead during training
+  
+- Solution:
+  - Created offline preprocessing script (scripts/preprocess_complete_target_mesh.py)
+  - Modified dataset loader to read preprocessed complete target data
+  - Added fallback mechanism to mesh_pose_dict for backward compatibility
+  - Created verification and training scripts for complete workflow
+  - Stored complete target mesh as vertices/faces and point clouds in scene npz files
+
+- Lessons Learned:
+  - Offline preprocessing significantly improves training efficiency
+  - Preprocessing should be done once and reused across multiple training runs
+  - Always provide fallback mechanisms for backward compatibility
+  - Verification scripts are essential for ensuring preprocessing quality
+  - Clear documentation and example scripts improve usability
+
+- Prevention Measures:
+  1. Always consider offline preprocessing for computationally expensive operations
+  2. Design data loading with both preprocessed and real-time generation options
+  3. Create comprehensive verification tools for preprocessed data
+  4. Provide clear usage examples and documentation
+  5. Test both preprocessed and fallback data loading paths
+  6. Consider storage requirements when designing preprocessing formats
+
+## [2024-12-19] Model Architecture and Environment Setup
+- Problem Description:
+  - Different TARGO model variants require different environments and CUDA versions
+  - Original TARGO models (targo, targo_full) vs PointTransformerV3 variants (targo_ptv3, ptv3_scene)
+  - Confusion about which environment and CUDA version to use for each model type
+  
+- Solution:
+  - Clarified model architecture relationships in documentation
+  - Original TARGO models: targo (with shape completion), targo_full (complete target PC)
+  - PointTransformerV3 variants: targo_ptv3, ptv3_scene (based on PointTransformerV3 architecture)
+  - Specified different environment requirements:
+    - Original TARGO: conda activate targo + module load cuda/11.3.0
+    - PTV3 variants: conda activate ptv3 + module load cuda/12.1.0
+  - Updated all documentation and scripts to reflect correct environment usage
+
+- Lessons Learned:
+  - Different model architectures may require different environments and dependencies
+  - Clear documentation of environment requirements prevents setup confusion
+  - Model variant naming should clearly indicate the underlying architecture
+  - Environment setup should be documented alongside model descriptions
+
+- Prevention Measures:
+  1. Always document environment requirements for each model variant
+  2. Use clear naming conventions that indicate the underlying architecture
+  3. Provide environment setup instructions in all training/testing scripts
+  4. Test all model variants with their specified environments
+  5. Keep environment requirements up to date with model development
+  6. Create separate documentation sections for different model families
+
 # Code Execution Best Practices
 ## 1. Code Execution Steps
+
+### For Original TARGO Models (targo, targo_full)
+- Activate environment: conda activate targo
+- Load modules:
+  ```bash
+  module load compiler/gcc-8.3
+  module load cuda/11.3.0
+  ```
+- Execute code:
+  ```bash
+  python scripts/inference.py [parameters]
+  ```
+
+### For PointTransformerV3 Variants (targo_ptv3, ptv3_scene)
+- Activate environment: conda activate ptv3
+- Load modules:
+  ```bash
+  module load cuda/12.1.0
+  ```
+- Execute code:
+  ```bash
+  python scripts/inference.py [parameters]
+  ```
+
+### For Other Models (GIGA, VGN, etc.)
 - Activate environment: conda activate targo
 - Load modules:
   ```bash
@@ -159,6 +285,8 @@ These practices help maintain code quality and reproducibility across projects.
 ## 2. Error Handling Process
 1. If first execution fails:
    - Check code version compatibility issues
+   - Verify correct environment is activated (targo vs ptv3)
+   - Verify correct CUDA version is loaded (11.3.0 vs 12.1.0)
    - Try using more generic attribute access methods
    - Add detailed error logging
 
@@ -168,8 +296,9 @@ These practices help maintain code quality and reproducibility across projects.
    - Try alternative solutions or fallback handling
 
 3. Pre-execution checks:
-   - Ensure environment is correctly activated
-   - Ensure all dependencies are installed
+   - Ensure correct environment is activated based on model type
+   - Ensure all dependencies are installed in the correct environment
+   - Ensure correct CUDA version is loaded
    - Check input parameter correctness
 
 ## 3. Debugging Tips
@@ -177,3 +306,29 @@ These practices help maintain code quality and reproducibility across projects.
 - Use try-except to catch specific exceptions
 - Add assertion checks at key points
 - Print intermediate results and variable values
+- Verify environment and CUDA version when debugging model-specific issues
+
+## [2024-12-19] Flash Attention Optimization
+- Problem Description:
+  - PointTransformerV3 models (targo_ptv3 and ptv3_scene) had flash attention disabled
+  - This resulted in suboptimal performance and memory usage
+  - Flash attention provides significant speedup for transformer attention computation
+  
+- Solution:
+  - Modified src/transformer/ptv3_fusion_model.py: Changed enable_flash=False to enable_flash=True for both scene_encoder and target_encoder
+  - Modified src/transformer/ptv3_scene_model.py: Changed default enable_flash parameter from False to True
+  - Modified src/vgn/ConvONets/conv_onet/config.py: Changed enable_flash=False to enable_flash=True in get_model_ptv3_scene function
+  - Updated comments to reflect performance benefits
+
+- Lessons Learned:
+  - Flash attention significantly improves transformer performance when available
+  - Default configurations should use optimal settings when dependencies are available
+  - Performance optimizations should be enabled by default unless there are compatibility issues
+  - Consistent configuration across all model variants is important
+
+- Prevention Measures:
+  1. Always check for performance optimization flags in model configurations
+  2. Enable flash attention by default when flash_attn library is available
+  3. Document performance implications of different configuration choices
+  4. Test models with optimized settings during development
+  5. Keep track of performance optimization opportunities across the codebase

@@ -7,7 +7,8 @@ from src.vgn.ConvONets.conv_onet import models, training
 from src.vgn.ConvONets.conv_onet import generation
 from src.vgn.ConvONets import data
 from src.vgn.ConvONets.common import decide_total_volume_range, update_reso
-from src.transformer.fusion_model import TransformerFusionModel
+# Conditional import - only import TransformerFusionModel when needed (not for targo_ptv3/ptv3_scene)
+# TransformerFusionModel will be imported inside get_model_targo function
 from src.transformer.ptv3_fusion_model import PointTransformerV3FusionModel
 
 def get_model_targo_ptv3(cfg, device=None, dataset=None, **kwargs):
@@ -132,6 +133,8 @@ def get_model_targo(cfg, device=None, dataset=None, **kwargs):
         
         decoders = [decoder_qual, decoder_rot, decoder_width]
 
+    # Import TransformerFusionModel only when needed (for targo model)
+    from src.transformer.fusion_model import TransformerFusionModel
     encoder_in = TransformerFusionModel(cfg['attention_params'], cfg['num_attention_layers'],\
             cfg['return_intermediate'], cfg['cross_att_key'], cfg['d_model'])
     
@@ -349,3 +352,96 @@ def get_data_fields(mode, cfg):
             fields['voxels'] = data.VoxelsField(voxels_file)
 
     return fields
+
+def get_model_ptv3_scene(cfg, device=None, dataset=None):
+    """
+    Create PTv3 Scene model that only processes scene point cloud.
+    
+    Args:
+        cfg: Configuration dictionary
+        device: Device to place model on
+        dataset: Dataset (optional)
+    
+    Returns:
+        ConvolutionalOccupancyNetwork_Grid model with PTv3 scene encoder
+    """
+    decoder = cfg['decoder']
+    encoder = cfg['encoder']
+    c_dim = cfg['c_dim']
+    decoder_kwargs = cfg['decoder_kwargs']
+    encoder_kwargs = cfg['encoder_kwargs']
+    padding = cfg.get('padding', 0.1)
+    local_coord = cfg.get('local_coord', False)
+    pos_encoding = cfg.get('pos_encoding', 'linear')
+
+    # Handle optional parameters
+    tsdf_only = cfg.get('tsdf_only', False)
+    detach_tsdf = cfg.get('detach_tsdf', False)
+
+    # Initialize decoders
+    decoder_kwargs['c_dim'] = c_dim
+    decoder_kwargs['padding'] = padding
+    # Remove out_dim from decoder_kwargs to avoid conflict
+    if tsdf_only:
+        decoder_kwargs['tsdf_only'] = tsdf_only
+    if detach_tsdf:
+        decoder_kwargs['detach_tsdf'] = detach_tsdf
+
+    # Create decoders with proper out_dim
+    decoder_qual = models.decoder_dict[decoder](out_dim=1, **decoder_kwargs)
+    decoder_rot = models.decoder_dict[decoder](out_dim=4, **decoder_kwargs)
+    decoder_width = models.decoder_dict[decoder](out_dim=1, **decoder_kwargs)
+    
+    # Create decoders list
+    decoders = [decoder_qual, decoder_rot, decoder_width]
+
+    # Use PointTransformerV3SceneModel for scene-only processing
+    from src.transformer.ptv3_scene_model import PointTransformerV3SceneModel
+    encoder_in = PointTransformerV3SceneModel(
+        in_channels=3,  # Only xyz coordinates, no rgb or normals
+        order=['z', 'z-trans', 'hilbert', 'hilbert-trans'],
+        stride=(2, 2, 2, 2),
+        enc_depths=(2, 2, 2, 6, 2),
+        enc_channels=(32, 64, 128, 256, 512),
+        enc_num_head=(2, 4, 8, 16, 32),
+        dec_depths=(2, 2, 2, 2),
+        dec_channels=(64, 64, 128, 256),
+        dec_num_head=(4, 4, 8, 16),
+        mlp_ratio=4,
+        qkv_bias=True,
+        qk_scale=None,
+        attn_drop=0.,
+        proj_drop=0.,
+        drop_path=0.3,
+        shuffle_orders=True,
+        pre_norm=True,
+        enable_rpe=False,
+        enable_flash=True,  # Enable flash attention for better performance
+        upcast_attention=False,
+        upcast_softmax=False,
+        cls_mode=False,
+        pdnorm_bn=False,
+        pdnorm_ln=False,
+        pdnorm_decouple=True,
+        pdnorm_adaptive=False,
+        pdnorm_affine=True,
+        pdnorm_conditions=('ScanNet', 'S3DIS', 'Structured3D'),
+    )
+    
+    # Create encoder_aff (scene encoder)
+    from src.vgn.ConvONets.encoder import encoder_dict
+    encoder_aff_scene = encoder_dict[encoder](
+        c_dim=c_dim, padding=padding,
+        **encoder_kwargs
+    )
+    
+    # Create encoders_in list
+    encoders_in = [encoder_in]
+
+    # Create the model with correct parameter format
+    model = models.ConvolutionalOccupancyNetwork_Grid(
+        decoders, encoders_in, encoder_aff_scene,
+        device=device, detach_tsdf=detach_tsdf, model_type='ptv3_scene'
+    )
+
+    return model

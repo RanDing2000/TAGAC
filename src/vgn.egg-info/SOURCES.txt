@@ -8,6 +8,7 @@ src/vgn/dataset_voxel_occ.py
 src/vgn/detection.py
 src/vgn/detection_implicit.py
 src/vgn/grasp.py
+src/vgn/grasp_conversion.py
 src/vgn/io.py
 src/vgn/networks.py
 src/vgn/perception.py
