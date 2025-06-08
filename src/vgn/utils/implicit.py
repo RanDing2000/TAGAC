@@ -202,6 +202,8 @@ def get_scene_from_mesh_pose_list_and_color(mesh_pose_list, target_id=None, scen
 def get_scene_from_mesh_pose_list(mesh_pose_list, target_id=None, scene_as_mesh=True, return_list=False, return_target_mesh = False):
     scene = trimesh.Scene()
     mesh_list = []
+    target_mesh = None  # Initialize target_mesh to avoid UnboundLocalError
+    
     for idx, (mesh_path, scale, pose) in enumerate(mesh_pose_list):
         if os.path.splitext(mesh_path)[1] == '.urdf':
             obj = URDF.load(mesh_path)
@@ -241,10 +243,16 @@ def get_scene_from_mesh_pose_list(mesh_pose_list, target_id=None, scene_as_mesh=
 
     # Determine what to return based on the parameters
     if return_list and return_target_mesh:
+        if target_mesh is None:
+            print(f"Warning: target_mesh not found for target_id {target_id}")
+            return None
         return scene, mesh_list, target_mesh
     elif return_list:
         return scene, mesh_list
     elif return_target_mesh:
+        if target_mesh is None:
+            print(f"Warning: target_mesh not found for target_id {target_id}")
+            return None
         return scene, target_mesh
     else:
         return scene

@@ -19,6 +19,7 @@ import random
 import trimesh
 import trimesh.transformations as tra
 import os
+import torch
 
 class SceneObject:
     visual_fpath: pathlib.Path
@@ -453,7 +454,9 @@ class ClutterRemovalSim(object):
         # Keep only these models
         if model in ("vgn", "giga_aff", "giga", "giga_hr"):
             scene_mask = (seg_img >= 0).astype(np.uint8)
-        elif model ==  "targo" or model == "targo_full_targ" or model == "targo_hunyun2":
+        elif model ==  "targo" or model == "targo_full_targ" or model == "targo_hunyun2" :
+            scene_mask = (seg_img >= 0).astype(np.uint8)
+        elif model == "targo_ptv3" or model == "ptv3_scene":
             scene_mask = (seg_img >= 0).astype(np.uint8)
 
         tic = time.time()
@@ -504,6 +507,51 @@ class ClutterRemovalSim(object):
             scene_no_targ_pc = scene_no_targ_pc / 0.3 - 0.5
             targ_depth_pc = targ_depth_pc / 0.3 - 0.5
             return tsdf, timing, scene_no_targ_pc, targ_depth_pc,targ_grid, occ_level
+        
+        elif model == "targo_ptv3":
+            # For targo_ptv3: return both scene point cloud and target point cloud
+            # Similar to original targo but with specific processing for PointTransformerV3
+            scene_no_targ_pc = np.load(curr_scene_path)["pc_scene_no_targ"]
+            targ_depth_pc = np.load(curr_scene_path)["pc_depth_targ"].astype(np.float32)
+            
+            # Normalize point clouds to [-0.5, 0.5] range as expected by PointTransformerV3
+            scene_no_targ_pc = scene_no_targ_pc / 0.3 - 0.5
+            targ_depth_pc = targ_depth_pc / 0.3 - 0.5
+            
+            # Apply coordinate filtering to ensure valid ranges for MinkowskiEngine
+            from utils_giga import filter_and_pad_point_clouds
+            scene_no_targ_pc = filter_and_pad_point_clouds(
+                torch.from_numpy(scene_no_targ_pc).unsqueeze(0).float()
+            ).squeeze(0).numpy()
+            targ_depth_pc = filter_and_pad_point_clouds(
+                torch.from_numpy(targ_depth_pc).unsqueeze(0).float()
+            ).squeeze(0).numpy()
+            
+            return tsdf, timing, scene_no_targ_pc, targ_depth_pc, targ_grid, occ_level
+            
+        elif model == "ptv3_scene":
+            # For ptv3_scene: only return scene point cloud (no target point cloud needed)
+            # Load scene point cloud including target (complete scene)
+            scene_pc_full = np.load(curr_scene_path)["pc_depth_scene_no_targ"]
+            
+            # Add target point cloud to scene for complete scene representation
+            if "pc_depth_targ" in np.load(curr_scene_path).files:
+                targ_depth_pc = np.load(curr_scene_path)["pc_depth_targ"].astype(np.float32)
+                scene_pc_full = np.concatenate([scene_pc_full, targ_depth_pc], axis=0)
+            
+            # Normalize to [-0.5, 0.5] range
+            scene_pc_full = scene_pc_full / 0.3 - 0.5
+            
+            # Apply coordinate filtering 
+            from utils_giga import filter_and_pad_point_clouds
+            scene_pc_full = filter_and_pad_point_clouds(
+                torch.from_numpy(scene_pc_full).unsqueeze(0).float()
+            ).squeeze(0).numpy()
+            
+            # For ptv3_scene, we return the full scene point cloud as the main input
+            # No separate target point cloud needed
+            return tsdf, timing, scene_pc_full, None, targ_grid, occ_level
+            
         elif model == "AnyGrasp_full_targ" or model == "FGC_full_targ":
             # Similar to targo type, but get both scene_no_targ_pc and targ_pc 
             # to be used later for concatenation as input

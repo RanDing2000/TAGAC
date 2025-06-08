@@ -20,6 +20,16 @@
       "console": "integratedTerminal",
       "args": [
         "--net", "ptv3_scene",
+        "--batch-size", "2",
+      ]
+    },
+    {
+      "name": "Debug TARGO-Full",
+      "type": "python",
+      "request": "launch",
+      "program": "${workspaceFolder}/scripts/train_targo_full.py",
+      "console": "integratedTerminal",
+      "args": [
         "--batch-size", "2"
       ]
     }

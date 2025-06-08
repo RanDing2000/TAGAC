@@ -112,7 +112,7 @@ def main(args):
             out_th=args.out_th if hasattr(args, 'out_th') and args.out_th is not None else 0.5,  # Use args.out_th if provided, otherwise default to 0.5
             visualize=args.vis
         )
-    elif args.type in ['giga', 'giga_aff', 'giga_hr', 'targo', 'targo_full_targ', 'targo_hunyun2', 
+    elif args.type in ['giga', 'giga_aff', 'giga_hr', 'targo', 'targo_full_targ', 'targo_hunyun2', 'targo_ptv3', 'ptv3_scene',
                       'FGC-GraspNet', 'AnyGrasp', 'AnyGrasp_full_targ', 'FGC_full_targ']:
         grasp_planner = VGNImplicit(
             args.model,
@@ -173,9 +173,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--type", default="targo",
-                        choices=["giga", "vgn", "targo", "targo_full_targ", "targo_hunyun2", 
+                        choices=["giga", "vgn", "targo", "targo_full_targ", "targo_hunyun2", "targo_ptv3", "ptv3_scene",
                                  "FGC-GraspNet", "AnyGrasp", "AnyGrasp_full_targ", "FGC_full_targ"],
-                        help="Model type: giga_hr | giga_aff | giga | vgn | targo | targo_full_targ | targo_hunyun2 | FGC-GraspNet | AnyGrasp | AnyGrasp_full_targ | FGC_full_targ")
+                        help="Model type: giga_hr | giga_aff | giga | vgn | targo | targo_full_targ | targo_hunyun2 | targo_ptv3 | ptv3_scene | FGC-GraspNet | AnyGrasp | AnyGrasp_full_targ | FGC_full_targ")
     parser.add_argument("--occlusion-level", type=str, choices=["no", "slight", "medium"], default="medium",
                         help="Occlusion level for the experiment: no, slight or medium.")
     parser.add_argument("--hunyun2_path", type=str, default=None,

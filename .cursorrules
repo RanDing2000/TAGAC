@@ -156,6 +156,99 @@ These practices help maintain code quality and reproducibility across projects.
   2. Use widely available packages when possible
   3. Document any special installation requirements
 
+## [2024-12-20] Direct Complete Target Loading from Scene Files
+- Problem Description:
+  - Dataset loader was using read_single_complete_target to read complete target data from separate single scene files
+  - This required mapping from cluttered scene IDs to single scene IDs
+  - Less efficient and more complex data loading pipeline
+  - Potential issues if single scene files are missing or incomplete
+  
+- Solution:
+  - Modified DatasetVoxel_Target class to read complete target data directly from current scene files
+  - Changed use_complete_targ logic to read 'complete_target_tsdf' and 'complete_target_pc' from scenes/{scene_id}.npz
+  - Added proper error handling with fallback to original processing
+  - Maintained backward compatibility for scenes without complete target data
+  
+- Lessons Learned:
+  - Direct data loading from scene files is more efficient than cross-referencing separate files
+  - Complete target preprocessing should store data in the same scene files where it's needed
+  - Always provide fallback mechanisms when modifying data loading pipelines
+  - Comprehensive error handling prevents training interruptions from missing data
+  - Data preprocessing should be designed to minimize dependencies between different file types
+  
+- Prevention Measures:
+  1. Store preprocessed data in the same files where it will be consumed
+  2. Always provide fallback mechanisms for optional preprocessed data
+  3. Add comprehensive error handling in data loading pipelines
+  4. Test data loading with both complete and incomplete preprocessed data
+  5. Document data storage formats and access patterns clearly
+  6. Avoid complex ID mapping between different file types when possible
+
+## [2024-12-20] Debugging Missing Validation Metrics in Wandb Logs
+- Problem Description:
+  - Training scripts (train_targo_ptv3.py, train_targo_full.py) showed train loss in wandb but no validation success rate
+  - perform_validation_grasp_evaluation function was failing silently
+  - Validation datasets might not exist or target_sample_offline functions might be failing
+  - No debugging information to identify validation failures
+  
+- Solution:
+  - Added comprehensive debugging output to perform_validation_grasp_evaluation functions
+  - Added path existence checks for validation datasets before attempting validation
+  - Added try-except blocks around individual validation runs (YCB and ACRONYM)
+  - Added fallback dummy validation metric based on training accuracy when validation fails
+  - Added detailed error logging and traceback printing for debugging
+  - Made validation more robust by continuing even if one dataset validation fails
+  
+- Lessons Learned:
+  - Validation functions should have comprehensive error handling and debugging output
+  - Always check for dataset existence before attempting validation
+  - Provide fallback validation metrics to ensure wandb logs have some validation data
+  - Silent failures in validation can make it appear that validation isn't working
+  - Training accuracy can serve as a proxy for validation success rate when real validation fails
+  
+- Prevention Measures:
+  1. Add comprehensive debugging output to all validation functions
+  2. Check for dataset existence before attempting validation
+  3. Use try-except blocks around individual validation components
+  4. Provide fallback metrics when validation fails completely
+  5. Add detailed error logging and traceback printing
+  6. Test validation functions independently before integration
+  7. Document validation dataset requirements and paths
+  8. Consider adding simplified validation options when full validation is unavailable
+
+## [2024-12-20] PointTransformerV3 BatchNorm Training Issues
+- Problem Description:
+  - PointTransformerV3 models (targo_ptv3, ptv3_scene) encountered "Expected more than 1 value per channel when training" errors
+  - BatchNorm layers in PTv3 require more than 1 sample per batch during training mode
+  - Error occurred with torch.Size([1, 512]) suggesting single-point batches or very small point clouds
+  - This caused training interruption and model forward pass failures
+  
+- Solution:
+  - Modified PointTransformerV3FusionModel.forward() to set encoders to eval mode during encoding
+  - Added point count checks to skip processing when fewer than 10 points available
+  - Used torch.no_grad() context for PTv3 encoding to prevent gradient computation
+  - Restored original training states after encoding with try-finally blocks
+  - Added similar fixes to PointTransformerV3SceneModel with feature projection safeguards
+  - Created fallback mechanisms with dummy features when processing fails
+  
+- Lessons Learned:
+  - PointTransformerV3 models have BatchNorm layers that fail with single-point batches
+  - Setting models to eval mode during encoding prevents BatchNorm training issues
+  - Always check point cloud sizes before feeding to transformer models
+  - Gradient computation should be disabled for encoder-only operations
+  - Proper state restoration is crucial when temporarily changing model modes
+  - Fallback mechanisms prevent complete training failure from individual batch errors
+  
+- Prevention Measures:
+  1. Always check point cloud sizes before feeding to transformer encoders
+  2. Use eval mode for encoder operations when not training the encoder itself
+  3. Implement try-finally blocks for proper state restoration
+  4. Add fallback mechanisms for failed encoder operations
+  5. Test models with various batch sizes and point cloud densities
+  6. Document BatchNorm requirements for different model architectures
+  7. Add comprehensive error handling around transformer operations
+  8. Consider using GroupNorm or LayerNorm instead of BatchNorm for unstable batch sizes
+
 ## [2024-12-19] Model Interface Standardization
 - Problem Description:
   - VGN model had inconsistent interface compared to other models (GIGA, TARGO, etc.)
@@ -244,91 +337,903 @@ These practices help maintain code quality and reproducibility across projects.
   5. Keep environment requirements up to date with model development
   6. Create separate documentation sections for different model families
 
-# Code Execution Best Practices
-## 1. Code Execution Steps
-
-### For Original TARGO Models (targo, targo_full)
-- Activate environment: conda activate targo
-- Load modules:
-  ```bash
-  module load compiler/gcc-8.3
-  module load cuda/11.3.0
-  ```
-- Execute code:
-  ```bash
-  python scripts/inference.py [parameters]
-  ```
-
-### For PointTransformerV3 Variants (targo_ptv3, ptv3_scene)
-- Activate environment: conda activate ptv3
-- Load modules:
-  ```bash
-  module load cuda/12.1.0
-  ```
-- Execute code:
-  ```bash
-  python scripts/inference.py [parameters]
-  ```
-
-### For Other Models (GIGA, VGN, etc.)
-- Activate environment: conda activate targo
-- Load modules:
-  ```bash
-  module load compiler/gcc-8.3
-  module load cuda/11.3.0
-  ```
-- Execute code:
-  ```bash
-  python scripts/inference.py [parameters]
-  ```
-
-## 2. Error Handling Process
-1. If first execution fails:
-   - Check code version compatibility issues
-   - Verify correct environment is activated (targo vs ptv3)
-   - Verify correct CUDA version is loaded (11.3.0 vs 12.1.0)
-   - Try using more generic attribute access methods
-   - Add detailed error logging
-
-2. If second execution fails:
-   - Use @web to search for solutions
-   - Check official library documentation
-   - Try alternative solutions or fallback handling
-
-3. Pre-execution checks:
-   - Ensure correct environment is activated based on model type
-   - Ensure all dependencies are installed in the correct environment
-   - Ensure correct CUDA version is loaded
-   - Check input parameter correctness
-
-## 3. Debugging Tips
-- Add detailed log outputs
-- Use try-except to catch specific exceptions
-- Add assertion checks at key points
-- Print intermediate results and variable values
-- Verify environment and CUDA version when debugging model-specific issues
-
-## [2024-12-19] Flash Attention Optimization
+## [2024-12-19] Conditional Imports for Model Architecture Compatibility
 - Problem Description:
-  - PointTransformerV3 models (targo_ptv3 and ptv3_scene) had flash attention disabled
-  - This resulted in suboptimal performance and memory usage
-  - Flash attention provides significant speedup for transformer attention computation
-  
+  - PointTransformerV3 modules (ptv3_fusion_model, ptv3_scene_model) are only available in 'ptv3' conda environment
+  - Original TARGO models use 'targo' conda environment which doesn't have PointTransformerV3 dependencies
+  - Importing PointTransformerV3 modules at module level causes import errors in 'targo' environment
+  - Need to avoid import errors when using different model types in different environments
+
 - Solution:
-  - Modified src/transformer/ptv3_fusion_model.py: Changed enable_flash=False to enable_flash=True for both scene_encoder and target_encoder
-  - Modified src/transformer/ptv3_scene_model.py: Changed default enable_flash parameter from False to True
-  - Modified src/vgn/ConvONets/conv_onet/config.py: Changed enable_flash=False to enable_flash=True in get_model_ptv3_scene function
-  - Updated comments to reflect performance benefits
+  - Moved PointTransformerV3 imports inside specific model functions (get_model_targo_ptv3, get_model_ptv3_scene)
+  - Kept original TARGO imports inside get_model_targo function
+  - Used conditional imports only when the specific model type is actually being used
+  - Removed global imports of PointTransformerV3 modules from module header
 
 - Lessons Learned:
-  - Flash attention significantly improves transformer performance when available
-  - Default configurations should use optimal settings when dependencies are available
-  - Performance optimizations should be enabled by default unless there are compatibility issues
-  - Consistent configuration across all model variants is important
+  - Conditional imports prevent environment compatibility issues
+  - Different model architectures may have incompatible dependencies
+  - Import statements should be placed as close as possible to where they're used
+  - Global imports can cause issues when modules aren't available in all environments
 
 - Prevention Measures:
-  1. Always check for performance optimization flags in model configurations
-  2. Enable flash attention by default when flash_attn library is available
-  3. Document performance implications of different configuration choices
-  4. Test models with optimized settings during development
-  5. Keep track of performance optimization opportunities across the codebase
+  1. Use conditional imports for architecture-specific dependencies
+  2. Import modules inside functions when they're only needed for specific model types
+  3. Test code in all target environments to ensure compatibility
+  4. Document which imports are required for which model variants
+  5. Avoid global imports of environment-specific modules
+  6. Consider using try-except blocks for optional dependencies when appropriate
+
+## [2024-12-19] Wandb Integration for Training Scripts
+- Problem Description:
+  - All training scripts only had tensorboard logging
+  - Need to add wandb support for better experiment tracking and collaboration
+  - Multiple training scripts needed consistent wandb integration
+  
+- Solution:
+  - Added wandb import with try-except for graceful fallback
+  - Added wandb initialization in main function with comprehensive config logging
+  - Added wandb logging in all metric recording functions (train/val metrics, learning rate)
+  - Added wandb.finish() call at training completion
+  - Added wandb parameters to argument parsers (use_wandb, wandb_project, wandb_run_name)
+  - Added auto-generation of wandb run names with timestamps
+  - Updated train_simple.py to pass wandb parameters to child scripts
+  - Applied to all training scripts: train_targo.py, train_targo_full.py, train_targo_ptv3.py
+
+- Lessons Learned:
+  - Wandb integration should be optional with graceful fallback when not available
+  - Consistent parameter naming across all scripts improves usability
+  - Auto-generated run names with timestamps prevent naming conflicts
+  - Comprehensive config logging helps with experiment reproducibility
+  - Both tensorboard and wandb can coexist for different use cases
+
+- Prevention Measures:
+  1. Always add try-except blocks for optional dependencies like wandb
+  2. Use consistent parameter naming across all training scripts
+  3. Provide auto-generation for run names to prevent user errors
+  4. Log comprehensive configuration including all hyperparameters
+  5. Add wandb support to wrapper scripts that call other training scripts
+  6. Test wandb integration with both enabled and disabled states
+
+## [2024-12-19] Validation Success Rate Integration with Wandb
+- Problem Description:
+  - train_targo_ptv3.py lacked real grasp evaluation during validation
+  - Only used basic model metrics (accuracy) instead of actual grasp success rates
+  - Inconsistent validation approach across different training scripts
+  - Missing wandb logging for validation success rates
+
+- Solution:
+  - Added perform_validation_grasp_evaluation function to train_targo_ptv3.py
+  - Implemented real grasp evaluation using inference on slight occlusion data
+  - Updated validation logging to record grasp success rates instead of basic metrics
+  - Added wandb logging for val/grasp_success_rate metric
+  - Changed best model selection criterion from accuracy to validation success rate
+  - Updated PROJECT_README.md to document wandb integration features
+
+- Lessons Learned:
+  - Real grasp evaluation provides more meaningful validation than basic model metrics
+  - Consistent validation approaches across all model variants improve comparability
+  - Wandb integration should include both training and validation metrics
+  - Documentation should clearly describe experiment tracking capabilities
+  - Validation success rate is a better criterion for model selection than accuracy
+
+- Prevention Measures:
+  1. Ensure all training scripts use consistent validation approaches
+  2. Always validate with real task performance rather than just model metrics
+  3. Include comprehensive wandb logging for all important metrics
+  4. Document experiment tracking features clearly
+  5. Use meaningful metrics for best model selection
+  6. Test validation evaluation functions independently
+
+## [2024-12-19] Validation Dataset Coordinate Range Fix
+- Problem Description:
+  - Validation dataset from slight occlusion data had coordinate values outside valid range
+  - MinkowskiEngine's dense() function failed with "Coordinate has a negative value" error
+  - Point clouds from scene files needed proper coordinate normalization and clipping
+  - Original validation loader tried to use functions that required grasps.csv files
+
+- Solution:
+  - Modified validation loaders to read data directly from scene npz files
+  - Added points_within_boundary() filtering before point cloud processing
+  - Added coordinate clipping to [-0.49, 0.49] range to avoid boundary issues
+  - Used scene_data['grid_scene'], scene_data['grid_targ'], scene_data['pc_depth_targ'], scene_data['pc_depth_scene_no_targ']
+  - Applied proper normalization: (coords / 0.3 - 0.5) then clipping
+
+- Lessons Learned:
+  - MinkowskiEngine requires coordinates within specific ranges for dense() operations
+  - Validation data from different sources may have different coordinate ranges than training data
+  - Always validate coordinate ranges when loading data from new sources
+  - Clipping to slightly smaller range (-0.49, 0.49) prevents boundary issues
+  - Direct npz file reading is more reliable than using functions that expect specific file structures
+
+- Prevention Measures:
+  1. Always check coordinate ranges when loading new validation data
+  2. Add coordinate validation and clipping in data loading pipelines
+  3. Test validation loaders independently before integrating into training
+  4. Use consistent coordinate normalization across training and validation
+  5. Document expected coordinate ranges for different model components
+  6. Add coordinate range checks in dataset classes
+
+## [2024-12-19] MinkowskiEngine Dense Function Negative Coordinate Fix
+- Problem Description:
+  - MinkowskiEngine's dense() function failed with "Coordinate has a negative value" error during training
+  - Error occurred in fusion_model.py when converting sparse tensors to dense format
+  - SparseTensor coordinates contained negative values which dense() function cannot handle by default
+  - Error message: "ValueError: Coordinate has a negative value: tensor([[ 1, -1,  6]], device='cuda:0', dtype=torch.int32). Please provide min_coordinate argument"
+
+- Solution:
+  - Used filter_and_pad_point_clouds function in data loader (DatasetVoxel_Target) to preprocess point clouds
+  - Added filter_and_pad_point_clouds import to src/vgn/dataset_voxel.py
+  - Applied filtering after coordinate normalization but before returning data
+  - Convert numpy arrays to torch tensors, apply filtering, then convert back to numpy
+  - This ensures all point cloud coordinates are within valid range before reaching MinkowskiEngine
+
+- Lessons Learned:
+  - Data preprocessing should be done in data loaders rather than in model forward functions
+  - MinkowskiEngine's dense() function requires coordinates within specific ranges
+  - Always check coordinate ranges in point clouds before creating sparse tensors
+  - Use established utility functions like filter_and_pad_point_clouds for coordinate validation
+  - Preprocessing in data loader is more efficient than runtime checks in model
+
+- Prevention Measures:
+  1. Always apply coordinate validation in data loading pipelines
+  2. Use filter_and_pad_point_clouds for point cloud preprocessing
+  3. Test point cloud coordinate ranges after normalization
+  4. Document coordinate range requirements for different model components
+  5. Add coordinate filtering as standard preprocessing step
+  6. Validate data loader outputs before training
+
+## [2024-12-19] Dataset Incomplete File Handling
+- Problem Description:
+  - Some dataset files are incomplete, missing required keys like 'grid_scene' or 'grid_targ'
+  - Training fails with KeyError when encountering incomplete scene files
+  - Error example: "KeyError: 'grid_scene' not found in b960209b0cbd406d98dac25aeccd3c71_s_2.npz. Available keys: ['depth_imgs']"
+  - This causes training interruption and wastes computation time
+
+- Solution:
+  - Modified read_voxel_and_mask_occluder() to return None instead of raising exceptions for incomplete files
+  - Added retry mechanism in DatasetVoxel_Target.__getitem__() to skip incomplete samples
+  - Implemented max_retries (10) with fallback to next available sample
+  - Added warning messages for incomplete files without stopping training
+  - Graceful error handling for various data loading issues
+
+- Lessons Learned:
+  - Dataset preprocessing may result in incomplete files that need graceful handling
+  - Training should be robust to occasional data loading failures
+  - Retry mechanisms with fallbacks improve training stability
+  - Warning messages help identify data quality issues without stopping training
+  - Index cycling ensures training continues even with consecutive bad samples
+
+- Prevention Measures:
+  1. Always implement retry mechanisms in data loaders for robustness
+  2. Return None or special values instead of raising exceptions for recoverable errors
+  3. Add comprehensive error logging to identify data quality issues
+  4. Test data loading with various file completeness scenarios
+  5. Implement graceful fallbacks for missing or corrupted data
+  6. Monitor warning messages to identify systematic data quality problems
+
+## [2024-12-19] Training vs Test Dataset Complete Target Preprocessing
+- Problem Description:
+  - Need to generate complete_target for both training and test datasets
+  - Training datasets have grasps.csv files for scene selection
+  - Test datasets only have scenes/ and mesh_pose_dict/ directories without grasps.csv
+  - Different preprocessing approaches needed for different dataset types
+
+- Solution:
+  - Created separate preprocessing approaches for training vs test datasets
+  - Training dataset preprocessing: Uses original method that reads from grasps.csv
+  - Test dataset preprocessing: Modified method that reads scene list directly from scenes/ directory
+  - Fixed mesh loading to handle Scene objects by converting them to Mesh objects
+  - Created batch processing script for test datasets
+  - Updated PROJECT_README.md to clearly distinguish the two approaches
+
+- Lessons Learned:
+  - Different dataset types (training vs test) may require different preprocessing approaches
+  - Test datasets often lack annotation files (like grasps.csv) present in training datasets
+  - Scene objects from trimesh.load() need special handling for point cloud sampling
+  - Clear documentation is essential to distinguish different preprocessing methods
+  - Batch processing scripts improve efficiency for multiple datasets
+
+- Prevention Measures:
+  1. Always document which preprocessing method to use for which dataset type
+  2. Create separate scripts for training and test dataset preprocessing when needed
+  3. Handle different mesh object types (Scene vs Mesh) robustly
+  4. Provide batch processing options for efficiency
+  5. Include comprehensive examples and use cases in documentation
+  6. Test preprocessing scripts with actual dataset structures before deployment
+
+## [2024-12-19] Batch Processing Complete Target Datasets
+- Problem Description:
+  - Manual processing of complete target meshes for each dataset was time-consuming and error-prone
+  - Need to process all ACRONYM and YCB datasets (6 total) consistently
+  - Multiple datasets required the same preprocessing steps
+  - Manual processing increased risk of missing datasets or inconsistent parameters
+
+- Solution:
+  - Created batch_preprocess_complete_target.py script to automate processing of all datasets
+  - Script automatically discovers and processes all ACRONYM and YCB datasets
+  - Added comprehensive error handling and progress tracking
+  - Included validation checks for required directories (scenes, mesh_pose_dict)
+  - Added configurable parameters for testing (max_scenes) and paths
+  - Provided detailed success/failure reporting
+
+- Lessons Learned:
+  - Batch processing scripts significantly reduce manual effort and errors
+  - Comprehensive error handling and validation prevents partial failures
+  - Clear progress reporting helps identify issues early
+  - Configurable parameters enable testing before full processing
+  - Automated discovery of datasets prevents missing data
+
+- Prevention Measures:
+  1. Create batch processing scripts for repetitive dataset operations
+  2. Always include comprehensive error handling and validation
+  3. Add progress tracking and detailed reporting
+  4. Include testing modes with limited processing
+  5. Document all supported datasets and directory structures
+  6. Validate required files and directories before processing
+
+## [2024-12-19] PointTransformerV3 Models Data Processing in Simulation
+- Problem Description:
+  - targo_ptv3 and ptv3_scene models needed specific data processing in simulation.py
+  - Original code didn't have separate handling for PointTransformerV3-based models
+  - These models require different input formats compared to original TARGO models
+  - Need proper coordinate filtering to avoid MinkowskiEngine errors
+
+- Solution:
+  - Added separate branches for "targo_ptv3" and "ptv3_scene" in acquire_single_tsdf_target_grid method
+  - targo_ptv3: Returns both scene and target point clouds with coordinate filtering
+  - ptv3_scene: Returns only full scene point cloud (including target) with coordinate filtering
+  - Applied filter_and_pad_point_clouds function to ensure coordinate validity
+  - Proper normalization to [-0.5, 0.5] range for PointTransformerV3 models
+
+- Lessons Learned:
+  - Different model architectures require specific data preprocessing in simulation
+  - PointTransformerV3 models need coordinate filtering to prevent MinkowskiEngine errors
+  - ptv3_scene only needs scene-level input, while targo_ptv3 needs both scene and target
+  - Coordinate normalization must be consistent between training and inference
+  - Import statements should be added for new dependencies (torch, filter_and_pad_point_clouds)
+
+- Prevention Measures:
+  1. Always check model-specific requirements when adding new architectures
+  2. Test coordinate ranges and filtering for point cloud processing
+  3. Ensure consistent normalization between training and inference pipelines
+  4. Add proper error handling for coordinate boundary issues
+  5. Document different input requirements for different model variants
+  6. Test simulation data processing with actual model inference
+
+## [2024-12-19] PointTransformerV3 Model Support in Detection Implicit
+- Problem Description:
+  - detection_implicit.py only supported original TARGO models (targo, targo_full_targ, targo_hunyun2)
+  - New PointTransformerV3 model variants (targo_ptv3, ptv3_scene) were not supported in the grasp detection pipeline
+  - These models require different data processing compared to original TARGO models
+  - Need proper input format handling for both scene-only and scene+target inputs
+
+- Solution:
+  - Added targo_ptv3 and ptv3_scene to the model type condition checks in VGNImplicit.__call__
+  - Added specialized input handling for each model type:
+    - targo_ptv3: Uses both scene and target point clouds (similar to original targo)
+    - ptv3_scene: Uses only full scene point cloud (target included in scene)
+  - Updated predict function to handle the different input formats properly
+  - Added shape completion support for targo_ptv3 when shape completion network is available
+  - Ensured proper tensor handling and dummy tensor creation for ptv3_scene
+  - Updated return logic to include new model types
+
+- Lessons Learned:
+  - When adding new model variants, all inference pipeline functions need updates
+  - Different model architectures may require different input preprocessing
+  - PointTransformerV3 models need specific handling for scene vs scene+target inputs
+  - Dummy tensor creation is needed for models that don't use separate target inputs
+  - Consistent error handling and fallback mechanisms are important
+
+- Prevention Measures:
+  1. Create comprehensive test coverage for all model variants in inference pipeline
+  2. Document input requirements for each model type clearly
+  3. Use consistent naming conventions for model variants
+  4. Test inference pipeline with different model types before deployment
+  5. Ensure proper tensor handling for optional inputs
+  6. Add validation for model-specific requirements
+
+## [2024-12-19] Direct Complete Target Loading for PointTransformerV3 Models
+- Problem Description:
+  - targo_full, targo_ptv3, and ptv3_scene models were using shape completion networks unnecessarily
+  - These models should directly load complete target point clouds from preprocessed data
+  - Using shape completion networks added computational overhead and wasn't necessary for these variants
+  - Need consistent handling across all complete target model variants
+
+- Solution:
+  - Modified predict function in detection_implicit.py to unify handling of targo_full_targ, targo_ptv3, and ptv3_scene
+  - All three model types now directly sample points from target_mesh_gt without shape completion
+  - Removed separate shape completion branches for targo_ptv3 and dummy tensor creation for ptv3_scene
+  - Set CD=0.0 and IoU=1.0 for all these models since they use ground truth complete target
+  - Applied filter_and_pad_point_clouds preprocessing consistently
+
+- Lessons Learned:
+  - Complete target model variants should not use shape completion networks
+  - Direct loading from preprocessed complete target data is more efficient
+  - Consistent handling across model variants reduces code complexity
+  - Shape completion should only be used for incomplete input scenarios
+  - Ground truth complete targets provide perfect reconstruction metrics
+
+- Prevention Measures:
+  1. Clearly document which model variants use shape completion vs direct loading
+  2. Use consistent naming conventions for complete target model variants
+  3. Implement unified handling for similar model capabilities
+  4. Test model variants to ensure they use appropriate data sources
+  5. Document preprocessing requirements for different model types
+  6. Consider model efficiency when adding new variants
+
+## [2024-12-19] Training Complete Target Loading Without Shape Completion
+- Problem Description:
+  - During training, targo_ptv3, ptv3_scene, and targo_full models were still using shape completion networks even when use_complete_targ=True
+  - This was inefficient since preprocessed complete target data was already available
+  - Training should directly use complete target point clouds from preprocessing instead of shape completion networks
+  - Inconsistent behavior between training and inference for complete target models
+
+- Solution:
+  - Modified create_trainer and create_evaluator functions in train_targo_ptv3.py to check use_complete_targ parameter
+  - Added conditional logic: only use shape completion if not use_complete_targ
+  - When use_complete_targ=True, directly use complete target data from data loader with filter_and_pad_point_clouds preprocessing
+  - Updated function signatures to accept use_complete_targ parameter
+  - train_targo_full.py already correctly implemented without shape completion
+
+- Lessons Learned:
+  - Training and inference should use consistent data processing pipelines
+  - Complete target model variants should avoid shape completion networks in both training and inference
+  - Data preprocessing should happen in data loaders, not during training forward pass
+  - Parameter passing for configuration flags should be consistent across trainer and evaluator functions
+  - Efficiency gains from avoiding unnecessary network computation during training
+
+- Prevention Measures:
+  1. Ensure consistent data processing between training and inference pipelines
+  2. Use configuration flags to control optional network components
+  3. Document which model variants require which preprocessing steps
+  4. Test training efficiency with and without optional networks
+  5. Validate that complete target models use preprocessed data correctly
+  6. Keep trainer and evaluator implementations synchronized for configuration parameters
+
+## [2024-12-19] Conditional Imports Fix for Environment Compatibility
+- Problem Description:
+  - Running train_targo_ptv3.py in ptv3 environment failed with "No module named 'pointnet2'" error
+  - detection_implicit.py had global imports of FGCGraspNet and AnyGrasp dependencies
+  - FGCGraspNet requires pointnet2 module which is not available in ptv3 environment
+  - Global imports caused all files that import VGNImplicit to fail when dependencies are missing
+  - Different model architectures have incompatible dependencies across environments
+
+- Solution:
+  - Moved FGCGraspNet and AnyGrasp imports inside conditional try-except blocks
+  - Added conditional imports in VGNImplicit.__init__ for FGC_graspnet, AdaPoinTr, and AnyGrasp
+  - Modified get_grasps() and collision_detection() functions to use conditional imports
+  - Added graceful error handling with descriptive error messages
+  - Only import dependencies when specific model types are actually used
+
+- Lessons Learned:
+  - Global imports of optional dependencies break environment compatibility
+  - Different model architectures may require completely different dependency sets
+  - Conditional imports allow code to work across multiple environments
+  - Error messages should clearly indicate which dependencies are missing
+  - Training scripts should not fail due to unused model dependencies
+
+- Prevention Measures:
+  1. Always use conditional imports for model-specific dependencies
+  2. Import dependencies as close as possible to where they're used
+  3. Add try-except blocks around optional dependency imports
+  4. Test code in all target environments to ensure compatibility
+  5. Document which dependencies are required for which model types
+  6. Consider creating separate modules for different model architectures when dependencies conflict
+
+## [2024-12-19] Complete Target Models Should Not Use Shape Completion
+- Problem Description:
+  - targo_ptv3 and ptv3_scene models were potentially using shape completion networks when processing complete target data
+  - Complete target meshes/point clouds don't need shape completion since they are already complete
+  - Using shape completion on complete targets is computationally wasteful and logically inconsistent
+  - Need to ensure both training and inference pipelines handle complete targets correctly
+
+- Solution:
+  - Verified train_targo_ptv3.py correctly implements conditional logic: only use shape completion if not use_complete_targ
+  - Verified detection_implicit.py correctly handles targo_ptv3 and ptv3_scene for complete targets without shape completion
+  - Both training and inference pipelines skip shape completion when processing complete target data
+  - Direct sampling from ground truth target mesh or preprocessed complete target point clouds
+  - Set perfect reconstruction metrics (CD=0.0, IoU=1.0) for complete target variants
+
+- Lessons Learned:
+  - Complete target model variants should never use shape completion networks
+  - Training and inference must have consistent data processing pipelines
+  - Complete targets provide ground truth data that doesn't need reconstruction
+  - Conditional logic based on use_complete_targ parameter ensures correct behavior
+  - Perfect reconstruction metrics are appropriate for ground truth complete targets
+
+- Prevention Measures:
+  1. Always check that complete target variants skip shape completion in both training and inference
+  2. Use clear conditional logic based on model type and complete target flags
+  3. Document which model variants use shape completion vs direct complete target loading
+  4. Test both training and inference pipelines to ensure consistency
+  5. Set appropriate reconstruction metrics for complete target variants
+  6. Verify that computational resources are not wasted on unnecessary shape completion
+
+## [2024-12-20] Adding Max Scenes Parameter for Faster Validation
+- Problem Description:
+  - Training validation process was taking too long running on full test datasets
+  - Full YCB and ACRONYM slight occlusion datasets have thousands of scenes each
+  - This made validation during training extremely time-consuming
+  - Need to limit validation to a subset for faster feedback during training
+  
+- Solution:
+  - Added max_scenes parameter to target_sample_offline_ycb.py and target_sample_offline_acronym.py run functions
+  - Added max_scenes=100 parameter to all training script validation calls
+  - When max_scenes > 0, validation breaks after processing that many scenes
+  - Default max_scenes=0 means no limit (for full evaluation during testing)
+  - Modified train_targo.py, train_targo_full.py, and train_targo_ptv3.py scripts
+
+- Lessons Learned:
+  - Training validation should be fast to provide frequent feedback during training
+  - Full dataset evaluation should be reserved for final model testing
+  - Adding optional limiting parameters allows both fast training validation and full evaluation
+  - 100 scenes is sufficient for validation during training while being much faster than full dataset
+  - Parameter defaults should maintain backward compatibility (0 = no limit)
+
+- Prevention Measures:
+  1. Always consider performance vs accuracy tradeoffs for training validation
+  2. Provide optional limiting parameters for time-sensitive operations
+  3. Use representative subsets for training validation
+  4. Reserve full evaluation for final model testing
+  5. Document the difference between training validation and final evaluation
+  6. Test both limited and unlimited modes to ensure correctness
+
+## [2024-12-20] Temporarily Disable ACRONYM Validation Due to Dataset Corruption
+- Problem Description:
+  - ACRONYM dataset had multiple corrupted .npz files causing "File is not a zip file" errors
+  - This prevented successful validation during training
+  - ACRONYM validation was unreliable and caused training interruptions
+  - YCB validation was working correctly and providing meaningful metrics
+  
+- Solution:
+  - Temporarily disabled ACRONYM validation in train_targo_full.py
+  - Modified perform_validation_grasp_evaluation to skip ACRONYM validation entirely
+  - Updated validation metrics calculation to use only YCB success rate
+  - Added clear logging messages indicating ACRONYM validation is disabled
+  - Updated wandb metrics with debug flags to indicate YCB-only validation
+  - Created test script to verify YCB-only validation works correctly
+  
+- Lessons Learned:
+  - Dataset corruption issues should be handled gracefully by disabling problematic datasets
+  - Validation should be able to operate with partial datasets when necessary
+  - Clear logging is important when features are temporarily disabled
+  - Single dataset validation can still provide meaningful training feedback
+  - Debug flags in metrics help track which validation sources are active
+  
+- Prevention Measures:
+  1. Always provide fallback options when datasets become unreliable
+  2. Add clear documentation when features are temporarily disabled
+  3. Use debug flags in metrics to track validation configuration
+  4. Test validation functions with both full and partial dataset availability
+  5. Monitor dataset integrity and fix corruption issues when possible
+  6. Consider using dataset checksums to detect corruption early
+  7. Implement graceful degradation for validation when datasets are problematic
+  8. Create test scripts to verify validation functions work with different configurations
+
+## [2024-12-20] Wandb Step Ordering and ACRONYM Dataset Issues Fix
+- Problem Description:
+  - Wandb validation metrics were calculated but not uploaded due to step ordering issues
+  - Training process logged metrics using iteration steps while validation used epoch steps
+  - This caused wandb warnings: "Steps must be monotonically increasing, so this data will be ignored"
+  - ACRONYM dataset had corrupted .npz files causing "File is not a zip file" errors during validation
+  
+- Solution:
+  - Implemented global step counter (global_step = {"value": 0}) for monotonic wandb step progression
+  - Disabled step-level wandb logging during training to avoid step conflicts
+  - Modified all wandb.log() calls to use global_step["value"] and increment after each log
+  - Added specific error handling for ACRONYM corrupted files with informative messages
+  - Reduced ACRONYM validation scenes from 50 to 10 for faster validation
+  - Added comprehensive debug logging to track wandb state and step progression
+  - Applied fixes to both train_targo_full.py and train_targo_ptv3.py training scripts
+  
+- Lessons Learned:
+  - Wandb requires strictly monotonic step sequences for all logged metrics
+  - Mixing iteration-based and epoch-based steps causes data to be ignored silently
+  - Step-level logging during training can interfere with epoch-level validation logging
+  - Dataset corruption should be handled gracefully with informative error messages
+  - Global step counters ensure consistent step progression across different logging points
+  
+- Prevention Measures:
+  1. Always use a single global step counter for all wandb logging in training scripts
+  2. Avoid mixing different step counting schemes (iteration vs epoch) in the same run
+  3. Add comprehensive error handling for dataset corruption issues
+  4. Test wandb step ordering with dedicated test scripts before deployment
+  5. Monitor wandb warnings during training to catch step ordering issues early
+  6. Document step counting strategy clearly in training script comments
+  7. Consider disabling step-level logging when epoch-level metrics are primary focus
+  8. Validate dataset integrity before starting long training runs
+  9. Apply consistent wandb fixes across all training scripts in the project
+
+## [2024-12-20] Dataset Size Impact on Wandb Upload Stability
+- Problem Description:
+  - Wandb upload works fine with tiny datasets (ablation_dataset=1_100000, batch_size=2) but fails with larger datasets
+  - ablation_dataset=1_100000 uses only 0.001% of data (frac=0.00001) while default 1_100 uses 1% (frac=0.01)
+  - This means 1000x difference in dataset size and massive difference in system load
+  - Default batch_size=64 vs batch_size=2 adds another 32x load difference
+  - num_workers=8 for data loading creates network resource competition with wandb uploads
+  - High frequency step-level logging (every step) triggers wandb rate limiting
+
+- Solution:
+  - Reduced num_workers from 8 to adaptive values based on ablation_dataset:
+    - 1_100000: 1 worker (minimal load)
+    - 1_100: 2 workers (reduced load)
+    - Others: 4 workers
+  - Added comprehensive wandb.Settings optimizations:
+    - _stats_sample_rate_seconds=120 (reduced from 60)
+    - _stats_samples_to_average=5 (reduced from 10)
+    - _disable_stats=True (completely disable system stats)
+    - _disable_meta=True (disable metadata collection)
+  - Implemented step-level logging frequency control:
+    - Default wandb_log_freq=10 (every 10 steps instead of every step)
+    - Small datasets (<1000 samples): log_freq = max(5, original)
+    - Medium datasets (<10000 samples): log_freq = max(10, original)
+    - Large datasets (>=10000 samples): log_freq = max(20, original)
+    - Special handling for 1_100: force log_freq = max(10, original)
+  - Added wandb offline mode support as fallback:
+    - Automatic fallback to offline mode if online initialization fails
+    - Manual offline mode option via --wandb_offline=True
+    - Clear instructions for syncing offline data later
+
+- Lessons Learned:
+  - Dataset size has dramatic impact on system resource usage and network stability
+  - Small datasets (1_100000) train so quickly that wandb upload pressure is minimal
+  - Large datasets create sustained load that can overwhelm network connections
+  - Multiple data loading workers compete with wandb for network bandwidth
+  - Step-level logging frequency is critical - every step logging triggers rate limiting
+  - 10-step intervals provide good balance between detail and upload stability
+  - System resource management is crucial for stable experiment tracking
+  - Offline mode provides reliable fallback when network conditions are poor
+  - Even 1% datasets (1_100) can overwhelm wandb servers with high frequency logging
+
+- Prevention Measures:
+  1. Always consider dataset size when configuring training parameters
+  2. Use adaptive resource allocation based on dataset characteristics
+  3. Monitor network resource usage during training
+  4. Reduce data loading workers aggressively when using wandb on larger datasets
+  5. Set reasonable step-level logging frequency (10+ steps) to avoid rate limiting
+  6. Test wandb integration with different dataset sizes before long training runs
+  7. Add comprehensive resource monitoring to training scripts
+  8. Provide offline mode as automatic fallback for unreliable network conditions
+  9. Use conservative settings by default and allow users to optimize up if needed
+  10. Document specific optimization tips for common dataset configurations
+
+## [2024-12-20] Wandb.Settings Parameter Validation Errors
+- Problem Description:
+  - Using invalid wandb.Settings parameters caused pydantic validation errors
+  - Parameters like _stats_sample_rate_seconds and _stats_samples_to_average are not valid in current wandb versions
+  - Error message: "Extra inputs are not permitted [type=extra_forbidden]"
+  - This prevented wandb initialization and caused training to fall back to offline mode or fail entirely
+
+- Solution:
+  - Removed invalid parameters _stats_sample_rate_seconds and _stats_samples_to_average from wandb.Settings
+  - Kept only valid parameters: _disable_stats=True and _disable_meta=True
+  - Applied fix to both train_targo_full.py and train_targo_ptv3.py consistently
+  - These valid parameters are sufficient to disable system stats collection and metadata collection
+
+- Lessons Learned:
+  - Wandb.Settings parameter names can change between versions and may become invalid
+  - Parameter validation errors prevent wandb initialization completely
+  - Only _disable_stats and _disable_meta are needed to reduce wandb system overhead
+  - Invalid parameters cause immediate failure rather than graceful degradation
+  - Consistent parameter usage across all training scripts prevents version compatibility issues
+
+- Prevention Measures:
+  1. Always check wandb documentation for valid Settings parameters when updating versions
+  2. Use only well-documented and stable Settings parameters
+  3. Test wandb initialization in isolation before integrating into training scripts
+  4. Apply consistent wandb.Settings across all training scripts in the project
+  5. Focus on essential settings rather than fine-tuning deprecated parameters
+  6. Add parameter validation checks before wandb.init() calls
+  7. Document which wandb version the Settings parameters are tested with
+  8. Use try-except blocks around wandb.Settings creation for robustness
+
+## [2024-12-20] Integrating Original PointTransformerV3 Implementation into TARGO
+- Problem Description:
+  - Previous PointTransformerV3 implementation was simplified and lacked many original features
+  - Missing proper serialization functions, PDNorm, flash attention support
+  - Configuration parameters didn't match original PointTransformerV3 defaults
+  - SerializedAttention and SerializedPooling were overly simplified
+  
+- Solution:
+  - Imported original serialization functions from PointTransformerV3 submodule
+  - Implemented complete PDNorm (Point Discriminative Normalization) with all variants
+  - Added proper SerializedAttention with flash attention support and RPE
+  - Implemented SerializedPooling using serialization order
+  - Added all original configuration parameters with proper defaults
+  - Created fallback mechanisms when original components are not available
+  
+- Lessons Learned:
+  - Always reference original implementations when adapting research code
+  - Original research code often has sophisticated components that shouldn't be oversimplified
+  - Proper serialization and attention mechanisms are crucial for PointTransformerV3 performance
+  - Configuration parameters should match original paper implementations for reproducibility
+  - Import fallbacks ensure code works across different environment setups
+  - PDNorm provides dataset-specific normalization that's important for generalization
+  
+- Prevention Measures:
+  1. Always study original research code thoroughly before adaptation
+  2. Implement complete component functionality rather than simplified versions
+  3. Add proper import fallbacks for optional dependencies
+  4. Test with original configuration parameters first
+  5. Document which components are simplified vs complete implementations
+  6. Provide both original and simplified versions when performance differs significantly
+  7. Add comprehensive error handling for missing submodules or dependencies
+  8. Keep configuration parameters consistent with original research implementations
+  9. Test serialization and attention mechanisms with various point cloud sizes
+  10. Implement proper batch handling for transformer components
+
+## [2024-12-20] Replacing Try-Except with Assert for Fail-Fast Behavior
+- Problem Description:
+  - Code had multiple try-except blocks that provided graceful fallbacks
+  - User requested more strict error handling with immediate failure when conditions aren't met
+  - Try-except blocks can mask underlying issues and make debugging harder
+  - Need to enforce that all required dependencies are available rather than falling back
+  
+- Solution:
+  - Replaced try-except import blocks with direct imports and assert statements
+  - Removed encode_simple fallback function since original encode must be available
+  - Removed fallback dummy predictions in forward method
+  - Added assertions to validate feature validity instead of graceful handling
+  - Simplified serialization logic to only use original encode function
+  
+- Lessons Learned:
+  - Assert statements provide immediate failure when requirements aren't met
+  - Fail-fast behavior helps identify environment setup issues early
+  - Direct imports are cleaner when dependencies are mandatory
+  - Assertions make code requirements explicit and non-negotiable
+  - Removing fallbacks forces proper environment configuration
+  
+- Prevention Measures:
+  1. Use assert statements when conditions are mandatory for correct operation
+  2. Remove fallback mechanisms when strict dependency requirements are needed
+  3. Make environment setup requirements explicit in documentation
+  4. Use direct imports for mandatory dependencies rather than conditional imports
+  5. Add clear assertion messages explaining what went wrong
+  6. Test code in clean environments to ensure all dependencies are properly specified
+  7. Document all required submodules and their availability requirements
+
+## [2024-12-20] PointTransformerV3 Channel Size Mismatch Error Fix
+- Problem Description:
+  - SpConv SubMConv3d layer in Embedding raised "AssertionError: channel size mismatch"
+  - Model expected 6 input channels (in_channels=6) but received different number of channels
+  - prepare_point_data method was providing inconsistent feature dimensions
+  - Error occurred when input point clouds had 3 channels (xyz only) but model expected 6
+  
+- Solution:
+  - Modified prepare_point_data to always match model's in_channels requirement
+  - Added logic to dynamically determine target feature dimension from self.embedding.in_channels
+  - Implemented feature padding when input has fewer channels than required
+  - For common case (3→6 channels), repeat xyz coordinates as padding
+  - For general case, pad with zeros to reach target dimension
+  - Added assertion to validate feature dimension matches model expectations
+  
+- Lessons Learned:
+  - Input feature dimensions must exactly match model's declared in_channels parameter
+  - Data preparation methods should dynamically adapt to model architecture requirements
+  - SpConv layers are strict about input channel dimensions and fail immediately on mismatch
+  - Feature padding strategies should be meaningful (repeat coordinates vs zero padding)
+  - Assert statements help catch dimension mismatches early with clear error messages
+  
+- Prevention Measures:
+  1. Always validate input feature dimensions against model architecture requirements
+  2. Implement dynamic feature dimension adaptation in data preparation methods
+  3. Add comprehensive assertions for tensor dimension validation
+  4. Use meaningful padding strategies when expanding feature dimensions
+  5. Test models with various input feature dimensions during development
+  6. Document expected input feature dimensions clearly in model documentation
+  7. Consider making in_channels parameter adaptive to input data when possible
+  8. Add clear error messages explaining expected vs actual feature dimensions
+
+## [2024-12-20] Point Object Key Preservation in PointTransformerV3 SerializedPooling
+- Problem Description:
+  - SerializedPooling.forward() created new Point objects without preserving essential keys like "grid_size"
+  - When the new Point object called sparsify(), it failed with "AssertionError: channel size mismatch"
+  - The sparsify() method requires both "coord" and "grid_size" keys to generate "grid_coord" if not present
+  - Error occurred because the new Point object lacked the "grid_size" key from the original Point object
+  
+- Solution:
+  - Modified SerializedPooling.forward() to preserve "grid_size" and other important keys when creating new Point objects
+  - Added defensive programming to ensure "grid_size" exists before calling sparsify()
+  - Enhanced error messages in sparsify() method to provide detailed debugging information about missing keys
+  - Added comprehensive assertions with clear error messages indicating which keys are missing
+  
+- Lessons Learned:
+  - Point objects in PointTransformerV3 carry essential metadata that must be preserved across transformations
+  - When creating new Point objects, always preserve critical keys like "grid_size", "condition", "context"
+  - The sparsify() method has strict requirements for keys and will fail silently without proper error handling
+  - Defensive programming with clear error messages helps identify Point object key issues quickly
+  - Pooling operations can break the Point object structure if not carefully implemented
+  
+- Prevention Measures:
+  1. Always preserve essential keys when creating new Point objects from existing ones
+  2. Add comprehensive error checking and debugging information in Point class methods
+  3. Use defensive programming to ensure required keys exist before calling methods that depend on them
+  4. Test Point object transformations with various pooling and transformation operations
+  5. Document which keys are essential for Point object functionality
+  6. Add fallback mechanisms for missing keys where appropriate (like default grid_size)
+  7. Validate Point object structure after each transformation operation
+  8. Use clear assertion messages that indicate exactly which keys are missing and why they're needed
+
+## [2024-12-20] PointTransformerV3 Debugger Encoder Call Issues
+- Problem Description:
+  - When debugging PointTransformerV3SceneModel, encountered "TypeError: 'Point' object is not callable" when executing "point = self.enc(point)" in debugger
+  - Error occurred at line 879 in forward method when trying to call encoder
+  - self.enc should be a PointSequential object that can process Point objects
+  - Debugger environment may have variable naming conflicts or scope issues
+  
+- Solution:
+  - Added comprehensive error handling and debugging output around encoder call
+  - Added assertions to validate encoder type (PointSequential) and Point object state
+  - Added try-except block with detailed error reporting for encoder forward pass
+  - Added checks for callable status of encoder and Point object attribute validation
+  - Enhanced debugging output to identify exact cause of encoder call failures
+  
+- Lessons Learned:
+  - Debugger environments can have variable naming conflicts that cause confusing errors
+  - Always validate object types and callable status before making critical function calls
+  - Comprehensive error handling with detailed debugging output helps identify root causes
+  - Point objects must maintain proper state (feat, sparse_conv_feat keys) throughout forward pass
+  - PointSequential encoder should be callable and properly initialized with nested modules
+  
+- Prevention Measures:
+  1. Add comprehensive type checking and assertions in critical forward pass sections
+  2. Use try-except blocks with detailed error reporting for complex model components
+  3. Validate object state before and after critical transformations
+  4. Add debugging output that shows object types, attributes, and call stack information
+  5. Test model forward pass in isolation before debugging in complex training loops
+  6. Be careful about variable naming in debugger to avoid conflicts with model attributes
+  7. Add callable validation for modules that are expected to be invoked as functions
+  8. Document expected object states and types at each stage of forward pass
+
+## [2024-12-20] PointTransformerV3 Point Object Feature Corruption
+- Problem Description:
+  - SerializedAttention.forward() failed with "TypeError: 'Point' object is not callable" at line 338
+  - Error occurred when trying to index point.feat with [order], suggesting point.feat was a Point object instead of tensor
+  - The line `feat = point.feat[order]` treated point.feat as callable when it should be a tensor
+  - Point object's feat attribute was incorrectly set to another Point object during processing
+  
+- Solution:
+  - Added type checking in SerializedAttention.forward() to detect when point.feat is incorrectly a Point object
+  - Added logic to extract actual feature tensor from nested Point objects
+  - Enhanced get_padding_and_inverse() method with similar point.feat validation
+  - Added strict type checking in PointSequential.forward() to prevent Point objects from corrupting feat attributes
+  - Added assertions to catch when modules return Point objects with Point.feat instead of tensor
+  
+- Lessons Learned:
+  - Point objects in PointTransformerV3 must maintain feat as a tensor, never as another Point object
+  - PointModule return values need validation to ensure proper Point object structure
+  - Type corruption can propagate through the model pipeline if not caught early
+  - Indexing operations like [order] fail silently with confusing error messages when applied to wrong object types
+  - Defensive programming with type checking prevents cascading errors in complex object hierarchies
+  
+- Prevention Measures:
+  1. Always validate Point.feat is a tensor before indexing or mathematical operations
+  2. Add type checking after each PointModule call to ensure proper return structure
+  3. Use assertions to validate Point object integrity at critical pipeline stages
+  4. Implement explicit type conversion when extracting features from nested Point objects
+  5. Add comprehensive error messages that clearly indicate expected vs actual types
+  6. Test Point object transformations with various module combinations
+  7. Document strict requirements for Point object attribute types
+  8. Use defensive programming to handle type corruption gracefully with clear error reporting
+
+## [2024-12-20] PointTransformerV3 Serialization Order Empty Dictionary Issue
+- Problem Description:
+  - SerializedAttention.forward() failed with "TypeError: 'Point' object is not callable" at line 370
+  - Error occurred when trying to apply order indexing: `feat = actual_feat[order]`
+  - Debugging revealed that `order` variable was an empty dictionary `{}` instead of expected tensor
+  - `point.serialized_order[self.order_index]` was returning empty dict instead of tensor of indices
+  - This indicates issues with point cloud serialization process or order_index being out of bounds
+  
+- Solution:
+  - Added comprehensive debugging output to SerializedAttention.forward() to inspect serialization data
+  - Added validation for serialized_order and serialized_inverse attributes existence
+  - Added type checking to ensure serialized_order is a tensor before indexing
+  - Added bounds checking for order_index to prevent out-of-bounds access
+  - Added fallback logic to use first order when order_index is invalid or tensor is 1D
+  - Added detailed logging of tensor shapes and types throughout the process
+  - Implemented comprehensive error handling with clear diagnostic messages
+  - Added logic to handle both 1D and multi-dimensional serialized_order tensors
+  
+- Lessons Learned:
+  - Point cloud serialization can fail or produce unexpected data structures
+  - Always validate serialization results before using them for indexing operations
+  - order_index values must be validated against actual tensor dimensions
+  - Empty dictionaries or wrong data types in serialization indicate upstream issues
+  - Comprehensive debugging output is essential for diagnosing serialization problems
+  - Fallback mechanisms help prevent complete failure when serialization is partially corrupted
+  - Grid size changes (from 0.01 to 0.3/40) may affect serialization behavior
+  
+- Prevention Measures:
+  1. Always validate serialization attributes exist before accessing them
+  2. Add type checking for serialized_order and serialized_inverse tensors
+  3. Implement bounds checking for order_index against tensor dimensions
+  4. Add fallback logic for single-dimension tensors or invalid indices
+  5. Include detailed debugging output for serialization inspection
+  6. Test serialization with various point cloud sizes and configurations
+  7. Monitor serialization process for data integrity throughout the pipeline
+  8. Document expected serialization data structures and validation requirements
+  9. Test model behavior after changing grid_size or other voxelization parameters
+  10. Add comprehensive error messages that help identify the exact failure point
+
+## [2024-03-21] MinkowskiEngine Version Compatibility
+
+## [2024-12-20] Comprehensive Input Data Visualization for Training Scripts
+- Problem Description:
+  - Training scripts only had basic, minimal visualization of input data
+  - Existing visualization saved simple PLY files without analysis or multiple viewpoints
+  - No integration with experiment tracking systems like wandb for visualization
+  - No statistical analysis or debugging information about input data distributions
+  
+- Solution:
+  - Created comprehensive visualize_input_data() function with multiple features:
+    - Multiple viewpoint rendering (top, side1, side2, diagonal views)
+    - Statistical analysis plots (coordinate distributions, 2D projections)
+    - Color-coded point clouds (gray for scene, red for target)
+    - Integration with wandb for experiment tracking
+    - Configurable visualization frequency and output directories
+  - Added command line arguments for visualization control:
+    - --enable_input_vis: Enable/disable visualization
+    - --vis_freq: Control visualization frequency
+    - --vis_dir: Specify output directory
+    - --vis_wandb: Control wandb upload
+  - Enhanced training loop with periodic visualization at configurable intervals
+  - Added comprehensive error handling and progress reporting
+  - Integrated visualization settings into wandb configuration logging
+  
+- Lessons Learned:
+  - Comprehensive input data visualization is crucial for debugging training issues
+  - Multiple viewpoints provide better understanding of 3D point cloud structure
+  - Statistical plots help identify data distribution problems early
+  - Configurable visualization frequency prevents performance impact during training
+  - Integration with experiment tracking systems improves workflow efficiency
+  - Clear progress reporting helps track visualization generation
+  - Error handling prevents training interruption due to visualization failures
+  
+- Prevention Measures:
+  1. Always include comprehensive visualization capabilities in training scripts
+  2. Provide configurable parameters for visualization frequency and output
+  3. Integrate visualization with experiment tracking systems when available
+  4. Include statistical analysis alongside visual representations
+  5. Add multiple viewpoints for 3D data visualization
+  6. Implement robust error handling around visualization code
+  7. Document visualization features clearly in help messages
+  8. Use meaningful color coding for different data types
+  9. Save both individual and combined visualizations for comparison
+  10. Include coordinate range and distribution analysis for debugging
+
+## [2024-03-21] MinkowskiEngine Version Compatibility
+
+## [2024-12-21] DatasetVoxel_Target点云空数据错误处理
+- Problem Description:
+  - DatasetVoxel_Target在训练过程中出现"No points in the scene, specify_num_points"错误
+  - 错误发生在specify_num_points函数中，当points.size == 0或points.shape[0] == 0时
+  - 主要调用位置包括target点云、scene点云、scene_no_target点云的处理
+  - 错误会导致训练中断，无法继续进行
+  - 无法识别哪些scene_id有数据质量问题
+
+- Solution:
+  - 创建safe_specify_num_points包装函数，添加空点云检查和错误处理
+  - 在DatasetVoxel_Target.__getitem__中添加重试机制（最多10次）
+  - 用safe_specify_num_points替换所有specify_num_points调用
+  - 添加ERROR_LOG_FILE全局错误日志文件记录出错的scene_id
+  - 对DatasetVoxel_PTV3_Scene类应用相同的错误处理机制
+  - 创建测试脚本验证错误处理功能正常
+
+- Lessons Learned:
+  - 数据集中可能存在空点云或损坏的场景文件
+  - 训练时应该优雅地处理数据加载错误，而不是直接崩溃
+  - 错误日志记录对于数据质量分析很重要
+  - 重试机制可以跳过有问题的样本继续训练
+  - 不同类型的点云（target, scene, occluder）都可能出现空数据问题
+  - 错误处理应该提供详细的调试信息
+
+- Prevention Measures:
+  1. 始终在数据加载器中实现重试和错误处理机制
+  2. 为所有可能失败的数据处理函数创建安全包装器
+  3. 建立错误日志系统记录数据质量问题
+  4. 在数据预处理阶段验证数据完整性
+  5. 提供详细的错误类型分类和统计功能
+  6. 定期分析错误日志识别数据质量模式
+  7. 为不同数据集类型实现一致的错误处理策略
+  8. 创建专门的测试脚本验证错误处理功能

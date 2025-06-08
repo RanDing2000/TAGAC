@@ -9,7 +9,6 @@ from src.vgn.ConvONets import data
 from src.vgn.ConvONets.common import decide_total_volume_range, update_reso
 # Conditional import - only import TransformerFusionModel when needed (not for targo_ptv3/ptv3_scene)
 # TransformerFusionModel will be imported inside get_model_targo function
-from src.transformer.ptv3_fusion_model import PointTransformerV3FusionModel
 
 def get_model_targo_ptv3(cfg, device=None, dataset=None, **kwargs):
     ''' Return the TARGO model with PointTransformerV3 encoder.
@@ -64,7 +63,8 @@ def get_model_targo_ptv3(cfg, device=None, dataset=None, **kwargs):
         
         decoders = [decoder_qual, decoder_rot, decoder_width]
 
-    # Use PointTransformerV3FusionModel instead of TransformerFusionModel
+    # Import PointTransformerV3FusionModel only when needed (for targo_ptv3 model)
+    from src.transformer.ptv3_fusion_model import PointTransformerV3FusionModel
     encoder_in = PointTransformerV3FusionModel()
     
     encoder_aff_scene = encoder_dict[encoder](
@@ -79,7 +79,7 @@ def get_model_targo_ptv3(cfg, device=None, dataset=None, **kwargs):
     return model
 
 def get_model_targo(cfg, device=None, dataset=None, **kwargs):
-    ''' Return the Occupancy Network model.
+    ''' Return the original TARGO model.
 
     Args:
         cfg (dict): imported yaml config 
@@ -133,7 +133,7 @@ def get_model_targo(cfg, device=None, dataset=None, **kwargs):
         
         decoders = [decoder_qual, decoder_rot, decoder_width]
 
-    # Import TransformerFusionModel only when needed (for targo model)
+    # Import TransformerFusionModel only when needed (for original targo model)
     from src.transformer.fusion_model import TransformerFusionModel
     encoder_in = TransformerFusionModel(cfg['attention_params'], cfg['num_attention_layers'],\
             cfg['return_intermediate'], cfg['cross_att_key'], cfg['d_model'])
@@ -395,41 +395,11 @@ def get_model_ptv3_scene(cfg, device=None, dataset=None):
     # Create decoders list
     decoders = [decoder_qual, decoder_rot, decoder_width]
 
-    # Use PointTransformerV3SceneModel for scene-only processing
+    # Import PointTransformerV3SceneModel only when needed (for ptv3_scene model)
     from src.transformer.ptv3_scene_model import PointTransformerV3SceneModel
-    encoder_in = PointTransformerV3SceneModel(
-        in_channels=3,  # Only xyz coordinates, no rgb or normals
-        order=['z', 'z-trans', 'hilbert', 'hilbert-trans'],
-        stride=(2, 2, 2, 2),
-        enc_depths=(2, 2, 2, 6, 2),
-        enc_channels=(32, 64, 128, 256, 512),
-        enc_num_head=(2, 4, 8, 16, 32),
-        dec_depths=(2, 2, 2, 2),
-        dec_channels=(64, 64, 128, 256),
-        dec_num_head=(4, 4, 8, 16),
-        mlp_ratio=4,
-        qkv_bias=True,
-        qk_scale=None,
-        attn_drop=0.,
-        proj_drop=0.,
-        drop_path=0.3,
-        shuffle_orders=True,
-        pre_norm=True,
-        enable_rpe=False,
-        enable_flash=True,  # Enable flash attention for better performance
-        upcast_attention=False,
-        upcast_softmax=False,
-        cls_mode=False,
-        pdnorm_bn=False,
-        pdnorm_ln=False,
-        pdnorm_decouple=True,
-        pdnorm_adaptive=False,
-        pdnorm_affine=True,
-        pdnorm_conditions=('ScanNet', 'S3DIS', 'Structured3D'),
-    )
+    encoder_in = PointTransformerV3SceneModel()
     
     # Create encoder_aff (scene encoder)
-    from src.vgn.ConvONets.encoder import encoder_dict
     encoder_aff_scene = encoder_dict[encoder](
         c_dim=c_dim, padding=padding,
         **encoder_kwargs

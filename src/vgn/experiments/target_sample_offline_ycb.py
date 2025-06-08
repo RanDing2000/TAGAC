@@ -123,6 +123,7 @@ def run(
     video_recording=True,
     target_file_path=None,  
     data_type='ycb',
+    max_scenes=0,  # Add parameter to limit number of scenes (0 means no limit)
 ):
     # Initialize the simulation
     sim = ClutterRemovalSim(
@@ -311,7 +312,7 @@ def run(
                     extrinsic=extrinsic
             )
             
-        elif model_type == 'targo' or model_type == 'targo_full_targ' or model_type == 'targo_hunyun2':
+        elif model_type == 'targo' or model_type == 'targo_full_targ' or model_type == 'targo_hunyun2' or model_type == 'targo_ptv3' or model_type == 'ptv3_scene':
             tsdf, timings["integration"], scene_no_targ_pc, targ_pc, targ_grid, occ_level = \
             sim.acquire_single_tsdf_target_grid(
                 path_to_npz,
@@ -404,11 +405,13 @@ def run(
         #     # print(f"planning time={time_end - time_begin}")
         
         mesh_pose_list = get_mesh_pose_list_from_world(sim.world, object_set)
-        try:
-            scene_mesh, target_mesh = get_scene_from_mesh_pose_list(mesh_pose_list, tgt_id - 1, return_target_mesh=True)
-        except UnboundLocalError:
-            print(f"Error: target_mesh not defined for scene {scene_name}, skipping")
+        result = get_scene_from_mesh_pose_list(mesh_pose_list, tgt_id - 1, return_target_mesh=True)
+        
+        if result is None:
+            print(f"Error: Could not get scene and target mesh for scene {scene_name}, skipping")
             continue
+        
+        scene_mesh, target_mesh = result
         
         if model_type == 'AnyGrasp_full_targ' or model_type == 'FGC_full_targ':
             targ_full_pc = target_mesh.sample(4096)
@@ -418,7 +421,7 @@ def run(
         # else:
         # grasps, scores, timings["planning"] = grasp_plan_fn(state, scene_mesh)
 
-        if model_type == 'targo' or model_type == 'targo_full_targ' or model_type == 'targo_hunyun2':
+        if model_type == 'targo' or model_type == 'targo_full_targ' or model_type == 'targo_hunyun2' or model_type == 'targo_ptv3' or model_type == 'ptv3_scene':
             grasps, scores, timings["planning"], cd, iou = grasp_plan_fn(state, scene_mesh, hunyun2_path=hunyun2_path, scene_name=scene_name, cd_iou_measure=True, target_mesh_gt=target_mesh_gt)
             # Store metrics for this scene
             scene_metrics[scene_name] = {
@@ -716,6 +719,10 @@ def run(
                 for key, val in occ_level_sr.items():
                     f.write(f"{key}:{val}\n")
                 f.write('\n')
+
+        # Check if we've reached the max_scenes limit
+        if max_scenes > 0 and num_id >= max_scenes:
+            break
 
     # Save target name and label dictionary
     with open(f'{result_path}/targ_name_label.json', 'w') as f:

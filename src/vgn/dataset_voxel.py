@@ -1,27 +1,22 @@
 import numpy as np
 from scipy import ndimage
 import torch.utils.data
+import torch
+import random
+import os
+from collections import defaultdict
 from pathlib import Path
 
 from src.vgn.io import *
 from src.vgn.perception import *
 from src.vgn.utils.transform import Rotation, Transform
 from src.vgn.utils.implicit import get_scene_from_mesh_pose_list
-
-import numpy as np
-from scipy import ndimage
-import torch.utils.data
-from pathlib import Path
+from utils_giga import *
 
 from vgn.io import *
 from vgn.perception import *
 from vgn.utils.transform import Rotation, Transform
 from vgn.utils.implicit import get_scene_from_mesh_pose_list
-import random
-import os
-# import utils_giga
-from utils_giga import visualize_depth_map,tsdf_to_ply, visualize_and_save_tsdf, filter_rows_by_id_only_clutter, filter_rows_by_id_only_single_and_double, count_and_sample, print_and_count_patterns, filter_rows_by_id_only_clutter_and_double, filter_rows_by_id_only_single, load_scene_indices, specify_num_points
-from utils_giga import save_point_cloud_as_ply, points_within_boundary
 import re
 from shape_completion.data_transforms import Compose
 
@@ -45,6 +40,41 @@ def transform_pc(pc):
     points_curr_transformed = transform({'input':pc})
         # pc_transformed[i] = points_curr_transformed['input']
     return points_curr_transformed['input']
+
+# Global error log file for recording problematic scene_ids
+ERROR_LOG_FILE = Path("/usr/stud/dira/GraspInClutter/targo/dataset_error_scenes.txt")
+
+def safe_specify_num_points(points, target_size, scene_id, point_type="unknown"):
+    """
+    Safe wrapper for specify_num_points that handles empty point clouds.
+    
+    Args:
+        points: Input point cloud array
+        target_size: Target number of points
+        scene_id: Scene identifier for logging
+        point_type: Type of points (e.g., "target", "scene", "occluder")
+    
+    Returns:
+        Processed point cloud or None if error
+    """
+    try:
+        if points.size == 0:
+            raise ValueError(f"No points in the scene for {point_type}")
+        if points.shape[0] == 0:
+            raise ValueError(f"Empty {point_type} point cloud")
+        
+        # Import here to avoid circular imports
+        from utils_giga import specify_num_points
+        return specify_num_points(points, target_size)
+        
+    except Exception as e:
+        # Log error to file
+        ERROR_LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with ERROR_LOG_FILE.open("a", encoding="utf-8") as f:
+            f.write(f"{scene_id},{point_type},\"{str(e)}\"\n")
+        
+        print(f"[ERROR] Scene {scene_id}: {point_type} point cloud error - {e}")
+        return None
 
 class DatasetVoxel_Target(torch.utils.data.Dataset):
     def __init__(self, root, raw_root, num_point=2048, augment=False, ablation_dataset="",  model_type="giga_aff",
@@ -73,22 +103,11 @@ class DatasetVoxel_Target(torch.utils.data.Dataset):
         if ablation_dataset == '1_100':
             self.df = self.df.sample(frac=0.01)
             self.df = self.df.reset_index(drop=True)
-        # if ablation_dataset == 'only_single_double':
-        #     self.df = filter_rows_by_id_only_single_and_double(self.df)
-        # if ablation_dataset == 'resized_set_theory':
-        #     self.df = count_and_sample(self.df)
+        if ablation_dataset == '1_100000':
+            self.df = self.df.sample(frac=0.00001)
+            self.df = self.df.reset_index(drop=True)
 
-        
-        if add_single_supervision == True:
-            path_single_scene_indices = os.path.join(raw_root, "single_scene_indices.txt")
-            self.single_scene_indices = load_scene_indices(path_single_scene_indices)
-            # self.df_s = filter_rows_by_id_only_single(self.df)
-            self.df_prev = self.df.copy()
-            self.df = filter_rows_by_id_only_clutter_and_double(self.df)
-        
-        # if use_complete_targ == True:
-        #     # self.df = filter_rows_by_id_only_single(self.df)
-        #     path_single_scene_indices = os.path.join(raw_root, "single_scene_indices.txt")
+
         print("data frames stastics")
         print_and_count_patterns(self.df,False)
 
@@ -112,6 +131,30 @@ class DatasetVoxel_Target(torch.utils.data.Dataset):
 
     def __getitem__(self, i):
         scene_id = self.df.loc[i, "scene_id"]
+        
+        # Add retry mechanism for incomplete scenes
+        max_retries = 10
+        for attempt in range(max_retries):
+            try:
+                return self._get_item_safe(i, scene_id)
+            except Exception as e:
+                # Log the error
+                ERROR_LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+                with ERROR_LOG_FILE.open("a", encoding="utf-8") as f:
+                    f.write(f"{scene_id},dataset_loading,\"attempt_{attempt+1}: {str(e)}\"\n")
+                
+                print(f"[WARNING] Scene {scene_id} loading failed (attempt {attempt+1}/{max_retries}): {e}")
+                
+                if attempt < max_retries - 1:
+                    # Try next scene
+                    i = (i + 1) % len(self.df)
+                    scene_id = self.df.loc[i, "scene_id"]
+                else:
+                    # Final attempt failed, raise the error
+                    raise e
+    
+    def _get_item_safe(self, i, scene_id):
+        """Safe version of __getitem__ with proper error handling."""
         # if not os.path.exists(os.path.join(self.root, 'scenes', scene_id)):
         #     print("Error")
         ori = Rotation.from_quat(self.df.loc[i, "qx":"qw"].to_numpy(np.single))
@@ -127,14 +170,6 @@ class DatasetVoxel_Target(torch.utils.data.Dataset):
         if self.use_complete_targ:
             single_scene_id = (scene_id.split('_')[0]) + '_s_' + scene_id.split('_')[2]
 
-        if self.add_single_supervision:
-            single_scene_id = (scene_id.split('_')[0]) + '_s_' + scene_id.split('_')[2]
-            single_scene_index =  random.choice(self.single_scene_indices[single_scene_id])
-            assert self.df_prev.loc[single_scene_index, "scene_id"] == single_scene_id
-            ori_s = Rotation.from_quat(self.df_prev.loc[single_scene_index, "qx":"qw"].to_numpy(np.single))
-            pos_s = self.df_prev.loc[single_scene_index, "x":"z"].to_numpy(np.single)
-            width_s =  np.float32(self.df_prev.loc[single_scene_index, "width"])
-            label_s = self.df_prev.loc[single_scene_index, "label"].astype(np.int64)
         
         if self.data_contain == "pc and targ_grid":
             voxel_grid, targ_grid = read_voxel_and_mask_occluder(self.raw_root, scene_id)
@@ -146,6 +181,8 @@ class DatasetVoxel_Target(torch.utils.data.Dataset):
 
             if not self.shape_completion:
                 if self.input_points == "tsdf_points":
+                    # assert os.path.exists(self.raw_root / "scenes" / (scene_id + ".npz")), f"Scene {scene_id} not found in {self.raw_root}"
+
                     targ_pc = read_targ_pc(self.raw_root, scene_id).astype(np.float32)
                     scene_pc = read_scene_pc(self.raw_root, scene_id).astype(np.float32)
                     targ_pc = points_within_boundary(targ_pc)
@@ -156,29 +193,50 @@ class DatasetVoxel_Target(torch.utils.data.Dataset):
                         targ_pc = read_targ_depth_pc(self.raw_root, scene_id).astype(np.float32)
                         scene_no_targ_pc = read_scene_no_targ_pc(self.raw_root, scene_id).astype(np.float32)
                         targ_pc = points_within_boundary(targ_pc)
-                        targ_pc = specify_num_points(targ_pc, 2048)
+                        
+                        # Safe point cloud processing
+                        targ_pc = safe_specify_num_points(targ_pc, 2048, scene_id, "target")
+                        if targ_pc is None:
+                            raise ValueError(f"Failed to process target point cloud for scene {scene_id}")
+                        
                         scene_no_targ_pc = points_within_boundary(scene_no_targ_pc)
-                        scene_no_targ_pc = specify_num_points(scene_no_targ_pc, 2048)
+                        scene_no_targ_pc = safe_specify_num_points(scene_no_targ_pc, 2048, scene_id, "scene_no_target")
+                        if scene_no_targ_pc is None:
+                            raise ValueError(f"Failed to process scene_no_target point cloud for scene {scene_id}")
+                        
                         scene_pc = np.concatenate((scene_no_targ_pc, targ_pc))
                     elif '_s_' in scene_id:
                         targ_pc = read_targ_depth_pc(self.raw_root, scene_id).astype(np.float32)
                         targ_pc = points_within_boundary(targ_pc)
-                        targ_pc = specify_num_points(targ_pc, 2048)
+                        
+                        targ_pc = safe_specify_num_points(targ_pc, 2048, scene_id, "target")
+                        if targ_pc is None:
+                            raise ValueError(f"Failed to process target point cloud for scene {scene_id}")
+                        
                         scene_pc = targ_pc
-                        scene_pc = specify_num_points(scene_pc, 4096)
+                        scene_pc = safe_specify_num_points(scene_pc, 4096, scene_id, "scene")
+                        if scene_pc is None:
+                            raise ValueError(f"Failed to process scene point cloud for scene {scene_id}")
 
 
             if self.shape_completion:
                 targ_pc = read_targ_pc(self.raw_root, scene_id).astype(np.float32)
                 targ_pc = points_within_boundary(targ_pc)
-                targ_pc = specify_num_points(targ_pc, 2048)
+                
+                targ_pc = safe_specify_num_points(targ_pc, 2048, scene_id, "target")
+                if targ_pc is None:
+                    raise ValueError(f"Failed to process target point cloud for scene {scene_id}")
+                
                 scene_pc = np.load('/usr/stud/dira/GraspInClutter/grasping/setup/plane_sampled.npy')
                 num_scene = scene_pc.shape[0] + 2048
                 if '_c_' in scene_id:
                     scene_no_targ_pc = read_scene_no_targ_pc(self.raw_root, scene_id).astype(np.float32)
                     scene_no_targ_pc = points_within_boundary(scene_no_targ_pc)
                     scene_pc = np.concatenate((scene_no_targ_pc, scene_pc), axis=0)
-                scene_pc = specify_num_points(scene_pc, num_scene)
+                
+                scene_pc = safe_specify_num_points(scene_pc, num_scene, scene_id, "scene_with_plane")
+                if scene_pc is None:
+                    raise ValueError(f"Failed to process scene_with_plane point cloud for scene {scene_id}")
 
             elif self.input_points == "depth_bp": 
                 targ_pc = read_targ_depth_pc(self.raw_root, scene_id).astype(np.float32)
@@ -193,20 +251,43 @@ class DatasetVoxel_Target(torch.utils.data.Dataset):
                 save_point_cloud_as_ply(scene_pc, vis_path)
 
 
-            if self.decouple:
-                voxel_grid = voxel_grid - targ_grid
-            if self.add_single_supervision:
-                targ_grid = read_single_complete_target(self.raw_root, single_scene_id)
-            elif self.use_complete_targ:
-                targ_grid, targ_pc = read_single_complete_target(self.raw_root, single_scene_id)
-                scene_pc = read_scene_no_targ_pc(self.raw_root, scene_id).astype(np.float32)
-                scene_pc = np.concatenate((scene_pc, targ_pc), axis=0)
+            # if self.decouple:
+            #     voxel_grid = voxel_grid - targ_grid
 
-            if not (self.shape_completion == False and self.input_points == "depth_target_others_tsdf") \
-                and not self.shape_completion:
-                targ_pc = specify_num_points(targ_pc, 2048)
+            elif self.use_complete_targ:
+                # Read complete target data directly from current scene file
+                scene_single_path = self.raw_root / "scenes" / f"{single_scene_id}.npz"
+                # miss_log = Path("/usr/stud/dira/GraspInClutter/targo/miss_complete_target_tsdf.txt")
+
+                # try:
+                with np.load(scene_single_path, allow_pickle=True) as data_single:
+                    targ_grid = data_single["complete_target_tsdf"]
+                # except (FileNotFoundError, KeyError) as e:
+                #     miss_log.parent.mkdir(parents=True, exist_ok=True)
+                #     with miss_log.open("a", encoding="utf-8") as f:
+                #         f.write(f"{scene_id}\n")
+                #     # 出错的话，跳过当前循环
+                #     print(f"Warning: skip scene {scene_id} (missing complete_target_tsdf): {e}")
+                    # return None
+            
+            # Check point cloud validity
+            if hasattr(self, 'targ_pc') and targ_pc is not None:
+                if targ_pc.shape[0] == 0:
+                    raise ValueError(f"Empty target point cloud for scene {scene_id}")
+            if hasattr(self, 'scene_pc') and scene_pc is not None:
+                if scene_pc.shape[0] == 0:
+                    raise ValueError(f"Empty scene point cloud for scene {scene_id}")
+
+
+            if self.model_type == "targo_full" or self.model_type == "targo":
+                targ_pc = safe_specify_num_points(targ_pc, 2048, scene_id, "final_target")
+                if targ_pc is None:
+                    raise ValueError(f"Failed to process final target point cloud for scene {scene_id}")
+                
                 if not ('_s_' in scene_id and self.shape_completion):
-                    scene_pc = specify_num_points(scene_pc, 2048)
+                    scene_pc = safe_specify_num_points(scene_pc, 2048, scene_id, "final_scene")
+                    if scene_pc is None:
+                        raise ValueError(f"Failed to process final scene point cloud for scene {scene_id}")
 
         if self.data_contain == "pc":
             voxel_grid, _, = read_voxel_and_mask_occluder(self.root, scene_id)
@@ -238,15 +319,6 @@ class DatasetVoxel_Target(torch.utils.data.Dataset):
             rotations[0] = ori.as_quat()
             rotations[1] = (ori * R).as_quat()
 
-
-        if self.add_single_supervision:
-            pos_s = pos_s / self.size - 0.5
-            width_s = width_s / self.size
-            rotations_s = np.empty((2, 4), dtype=np.single)
-            R_s =  Rotation.from_rotvec(np.pi * np.r_[0.0, 0.0, 1.0])
-            rotations_s[0] = ori_s.as_quat()
-            rotations_s[1] = (ori_s * R_s).as_quat()
-
         if self.data_contain == "pc and targ_grid":
             if not self.shape_completion:
                 plane = np.load('/usr/stud/dira/GraspInClutter/grasping/setup/plane_sampled.npy')
@@ -256,14 +328,33 @@ class DatasetVoxel_Target(torch.utils.data.Dataset):
                     scene_pc = scene_pc /0.3- 0.5
                 elif '_s_' in scene_id and self.shape_completion:
                     scene_pc = plane
-                    scene_pc = specify_num_points(scene_pc, 2048 + plane.shape[0])
+                    scene_pc = safe_specify_num_points(scene_pc, 2048 + plane.shape[0], scene_id, "plane_scene")
+                    if scene_pc is None:
+                        raise ValueError(f"Failed to process plane scene point cloud for scene {scene_id}")
                     targ_pc = targ_pc /0.3- 0.5
                     scene_pc = scene_pc /0.3- 0.5
             elif self.shape_completion:
                 scene_pc = scene_pc /0.3- 0.5
                 targ_pc = targ_pc /0.3- 0.5
 
-            x = (voxel_grid[0], targ_grid[0], targ_pc, scene_pc)
+            # Apply filter_and_pad_point_clouds to ensure coordinates are within valid range
+            # This prevents MinkowskiEngine negative coordinate errors
+            targ_pc_tensor = torch.from_numpy(targ_pc).unsqueeze(0).float()
+            scene_pc_tensor = torch.from_numpy(scene_pc).unsqueeze(0).float()
+            
+            if self.model_type == "targo_full_targ" or self.model_type == "targo":
+                targ_pc_filtered = filter_and_pad_point_clouds(targ_pc_tensor)
+                scene_pc_filtered = filter_and_pad_point_clouds(scene_pc_tensor)
+            
+            targ_pc = targ_pc_filtered.squeeze(0).numpy()
+            scene_pc = scene_pc_filtered.squeeze(0).numpy()
+
+            if self.model_type != "ptv3_scene":
+                x = (voxel_grid[0], targ_grid[0], targ_pc, scene_pc)
+            else:
+                # For ptv3_scene, combine scene and target into one point cloud with labels
+                combined_pc = np.concatenate([scene_pc, targ_pc], axis=0)
+                x = (voxel_grid[0], targ_grid[0], targ_pc, combined_pc)
 
         if self.data_contain == "pc":
             if self.model_type == "vgn":
@@ -272,10 +363,7 @@ class DatasetVoxel_Target(torch.utils.data.Dataset):
                 x = (voxel_grid[0])
 
 
-        if self.add_single_supervision:
-            y = (label, rotations, width, label_s, rotations_s, width_s)
-        else:
-            y = (label, rotations, width)
+        y = (label, rotations, width)
         
         if self.model_type == "vgn":
             return x, y, index
@@ -289,6 +377,166 @@ class DatasetVoxel_Target(torch.utils.data.Dataset):
         scene = get_scene_from_mesh_pose_list(mesh_pose_list, return_list=False)
         return scene
 
+class DatasetVoxel_PTV3_Scene(torch.utils.data.Dataset):
+    def __init__(self, root, raw_root, num_point=2048, augment=False, ablation_dataset="",  model_type="giga_aff",
+            use_complete_targ = False, debug = False, logdir = None):
+        assert model_type == "ptv3_scene"
+        self.root = root
+        self.augment = augment
+        self.num_point = num_point
+        self.raw_root = raw_root
+        self.num_th = 32
+        self.use_complete_targ = use_complete_targ
+        self.model_type = model_type
+        self.debug = debug
+        
+        self.df = read_df(raw_root)
+        # self.df = read_df_filtered(raw_root)
+        # self.df = self.df[:300]
+        if ablation_dataset == 'only_cluttered':
+            self.df = filter_rows_by_id_only_clutter(self.df)
+
+        if ablation_dataset == '1_10':
+            self.df = self.df.sample(frac=0.1)
+            self.df = self.df.reset_index(drop=True)
+        
+        if ablation_dataset == '1_100':
+            self.df = self.df.sample(frac=0.01)
+            self.df = self.df.reset_index(drop=True)
+        if ablation_dataset == '1_100000':
+            self.df = self.df.sample(frac=0.00001)
+            self.df = self.df.reset_index(drop=True)
+
+        print("data frames stastics")
+        print_and_count_patterns(self.df,False)
+
+        ## filter dirty data
+        skip_scene_ids = ['b960209b0cbd406d98dac25aeccd3c71_s_2']
+        self.df = self.df[~self.df['scene_id'].isin(skip_scene_ids)]
+        # self.df = self.df[~self.df.scene_id.isin(skip_scene_ids)]
+        self.df = self.df.reset_index(drop=True)
+
+        self.size, _, _, _ = read_setup(raw_root)
+
+        # Add visualization support
+        if self.debug:
+            vis_logdir = logdir / 'vis_data'
+            if not vis_logdir.exists():
+                vis_logdir.mkdir(exist_ok=True, parents=True)
+            self.vis_logdir = vis_logdir
+
+    def __len__(self):
+        return len(self.df.index)
+
+    def __getitem__(self, i):
+        scene_id = self.df.loc[i, "scene_id"]
+        
+        # Add retry mechanism for incomplete scenes
+        max_retries = 10
+        for attempt in range(max_retries):
+            try:
+                return self._get_item_safe_ptv3(i, scene_id)
+            except Exception as e:
+                # Log the error
+                ERROR_LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+                with ERROR_LOG_FILE.open("a", encoding="utf-8") as f:
+                    f.write(f"{scene_id},ptv3_dataset_loading,\"attempt_{attempt+1}: {str(e)}\"\n")
+                
+                print(f"[WARNING] PTV3 Scene {scene_id} loading failed (attempt {attempt+1}/{max_retries}): {e}")
+                
+                if attempt < max_retries - 1:
+                    # Try next scene
+                    i = (i + 1) % len(self.df)
+                    scene_id = self.df.loc[i, "scene_id"]
+                else:
+                    # Final attempt failed, raise the error
+                    raise e
+    
+    def _get_item_safe_ptv3(self, i, scene_id):
+        """Safe version of __getitem__ for PTV3_Scene with proper error handling."""
+        ori = Rotation.from_quat(self.df.loc[i, "qx":"qw"].to_numpy(np.single))
+        pos = self.df.loc[i, "x":"z"].to_numpy(np.single)
+        width =  np.float32(self.df.loc[i, "width"])
+        label = self.df.loc[i, "label"].astype(np.int64)
+
+        single_scene_id = (scene_id.split('_')[0]) + '_s_' + scene_id.split('_')[2]
+        voxel_grid, targ_grid = read_voxel_and_mask_occluder(self.raw_root, scene_id)
+        occluder_grid = voxel_grid - targ_grid
+        targ_pc = read_complete_target_pc(self.raw_root, scene_id).astype(np.float32)
+        scene_single_path = self.raw_root / "scenes" / f"{single_scene_id}.npz"
+        with np.load(scene_single_path, allow_pickle=True) as data_single:
+            targ_grid = data_single["complete_target_tsdf"]
+        voxel_grid = occluder_grid + targ_grid
+
+        plane = np.load('/usr/stud/dira/GraspInClutter/grasping/setup/plane_sampled.npy')
+        if '_c_' in scene_id:
+            scene_no_targ_pc = read_scene_no_targ_pc(self.raw_root, scene_id).astype(np.float32)
+            # scene_no_targ_pc = np.concatenate((scene_no_targ_pc, plane), axis=0)
+            targ_pc = points_within_boundary(targ_pc)
+            
+            targ_pc = safe_specify_num_points(targ_pc, 512, scene_id, "ptv3_target")
+            if targ_pc is None:
+                raise ValueError(f"Failed to process PTV3 target point cloud for scene {scene_id}")
+            
+            scene_no_targ_pc = points_within_boundary(scene_no_targ_pc)
+            scene_no_targ_pc = np.concatenate((scene_no_targ_pc, plane), axis=0)
+            scene_no_targ_pc = safe_specify_num_points(scene_no_targ_pc, 512, scene_id, "ptv3_scene_no_target")
+            if scene_no_targ_pc is None:
+                raise ValueError(f"Failed to process PTV3 scene_no_target point cloud for scene {scene_id}")
+            # scene_pc = np.concatenate((scene_no_targ_pc, targ_pc))
+        elif '_s_' in scene_id:
+            scene_no_targ_pc = plane
+            targ_pc = points_within_boundary(targ_pc)
+            
+            targ_pc = safe_specify_num_points(targ_pc, 512, scene_id, "ptv3_target")
+            if targ_pc is None:
+                raise ValueError(f"Failed to process PTV3 target point cloud for scene {scene_id}")
+            
+            scene_no_targ_pc = safe_specify_num_points(scene_no_targ_pc, 512, scene_id, "ptv3_plane")
+            if scene_no_targ_pc is None:
+                raise ValueError(f"Failed to process PTV3 plane point cloud for scene {scene_id}")
+            # scene_pc = targ_pc
+            # scene_pc = specify_num_points(scene_pc, 512)
+
+        targ_pc = targ_pc /0.3- 0.5
+        scene_no_targ_pc = scene_no_targ_pc /0.3- 0.5
+        targ_pc = torch.from_numpy(targ_pc).float()
+        scene_no_targ_pc = torch.from_numpy(scene_no_targ_pc).float()
+
+        targ_labels = torch.ones((targ_pc.shape[0], 1), dtype=torch.float32)  # Target points labeled as 1
+        occluder_labels = torch.zeros((scene_no_targ_pc.shape[0], 1), dtype=torch.float32)  # Scene points labeled as 0
+        targ_pc_with_labels = torch.cat((targ_pc, targ_labels), dim=1)
+        scene_no_targ_pc_with_labels = torch.cat((scene_no_targ_pc, occluder_labels), dim=1)
+        scene_pc_with_labels = torch.cat((scene_no_targ_pc_with_labels, targ_pc_with_labels), dim=0)
+           
+        pos = pos / self.size - 0.5
+        width = width / self.size
+
+        rotations = np.empty((2, 4), dtype=np.single)
+        R = Rotation.from_rotvec(np.pi * np.r_[0.0, 0.0, 1.0])
+        rotations[0] = ori.as_quat()
+        rotations[1] = (ori * R).as_quat()
+
+        targ_pc_with_labels = targ_pc_with_labels.squeeze(0).numpy()
+        scene_pc_with_labels = scene_pc_with_labels.squeeze(0).numpy()
+
+        x = (voxel_grid[0], targ_grid[0], targ_pc_with_labels, scene_pc_with_labels)
+
+        # if self.debug:
+        #     vis_path = str(self.vis_logdir / 'complete_targ_grid.png')
+        #     visualize_and_save_tsdf(targ_grid[0], vis_path)
+
+        y = (label, rotations, width)
+
+        return x, y, pos
+
+    def get_mesh(self, idx):
+        scene_id = self.df.loc[idx, "scene_id"]
+        mesh_pose_list_path = self.raw_root / 'mesh_pose_list' / (scene_id + '.npz')
+        mesh_pose_list = np.load(mesh_pose_list_path, allow_pickle=True)['pc']
+        scene = get_scene_from_mesh_pose_list(mesh_pose_list, return_list=False)
+        return scene
+    
 def apply_transform(voxel_grid, orientation, position):
     angle = np.pi / 2.0 * np.random.choice(4)
     R_augment = Rotation.from_rotvec(np.r_[0.0, 0.0, angle])

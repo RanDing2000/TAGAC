@@ -786,7 +786,8 @@ class Embedding(PointModule):
 class PointTransformerV3(PointModule):
     def __init__(
         self,
-        in_channels=6,
+        # in_channels=6,
+        in_channels=5,
         order=("z", "z-trans", "hilbert", "hilbert-trans"),
         stride=(2, 2, 2, 2),
         enc_depths=(2, 2, 2, 6, 2),

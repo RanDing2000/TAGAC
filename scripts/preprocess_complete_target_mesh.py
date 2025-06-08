@@ -18,8 +18,8 @@ from urdfpy import URDF
 import pandas as pd
 from tqdm import tqdm
 
-from src.vgn.io import read_df, read_setup
-from src.vgn.utils.transform import Transform
+# Remove dependency on read_df since grasps.csv may not exist
+# from src.vgn.io import read_df, read_setup
 
 
 def load_mesh_from_path(mesh_path):
@@ -31,7 +31,23 @@ def load_mesh_from_path(mesh_path):
         assert len(obj.links[0].visuals[0].geometry.meshes) == 1, "Assumption that each visual has exactly one mesh might not hold true."
         mesh = obj.links[0].visuals[0].geometry.meshes[0].copy()
     else:
-        mesh = trimesh.load(mesh_path)
+        loaded_obj = trimesh.load(mesh_path)
+        
+        # Handle case where trimesh.load returns a Scene object instead of Mesh
+        if isinstance(loaded_obj, trimesh.Scene):
+            # If it's a scene, try to get the first mesh from the scene
+            if len(loaded_obj.geometry) == 0:
+                raise ValueError(f"Scene has no geometry: {mesh_path}")
+            elif len(loaded_obj.geometry) == 1:
+                # Single mesh in scene
+                mesh = list(loaded_obj.geometry.values())[0]
+            else:
+                # Multiple meshes in scene, combine them
+                mesh = loaded_obj.dump(concatenate=True)
+        else:
+            # Already a Mesh object
+            mesh = loaded_obj
+    
     return mesh
 
 
@@ -88,27 +104,23 @@ def process_scene(scene_id, raw_root, output_root):
         bool: True if successful, False otherwise
     """
     try:
-        # Read mesh_pose_dict for this scene
-        if '_c_' in scene_id:
-            clutter_scene_id = scene_id.split('_c_')[0]
-            mesh_pose_dict_path = raw_root / 'mesh_pose_dict' / (clutter_scene_id + '_c.npz')
-        elif '_s_' in scene_id:
-            single_scene_id = scene_id
-            mesh_pose_dict_path = raw_root / 'mesh_pose_dict' / (single_scene_id + '.npz')
-        else:
-            print(f"Warning: Cannot extract target_id from scene_id {scene_id}")
-            return False
+        # For both clutter and single scenes, the mesh_pose_dict file has the same name as the scene file
+        mesh_pose_dict_path = raw_root / 'mesh_pose_dict' / (scene_id + '.npz')
 
         if not mesh_pose_dict_path.exists():
-            assert False, f"mesh_pose_dict not found for {scene_id}"
+            print(f"Warning: mesh_pose_dict not found for {scene_id}: {mesh_pose_dict_path}")
+            return False
 
         mesh_pose_data = np.load(mesh_pose_dict_path, allow_pickle=True)
         mesh_pose_dict = mesh_pose_data['pc'].item()
 
-        # Extract target_id
+        # Extract target_id from scene_id
         if '_c_' in scene_id:
+            # Clutter scene: format is "scene_id_c_target_id"
             target_id = int(scene_id.split('_c_')[-1])
         elif '_s_' in scene_id:
+            # Single scene: format is "scene_id_s_object_id_target_id" 
+            # For single scenes, we use the highest numbered object as target
             target_id = int(max(mesh_pose_dict.keys()))
         else:
             print(f"Warning: Cannot extract target_id from scene_id {scene_id}")
@@ -123,17 +135,18 @@ def process_scene(scene_id, raw_root, output_root):
             print(f"Failed to generate complete target for {scene_id}")
             return False
 
-        # Load target point cloud
+        # Save updated scene data with complete mesh
+        scene_path = output_root / "scenes" / (scene_id + ".npz")
+        if not scene_path.exists():
+            print(f"Warning: Scene file not found for {scene_id}: {scene_path}")
+            return False
+
+        # Load existing scene data
+        existing_data = np.load(scene_path, allow_pickle=True)
+        new_data = {key: existing_data[key] for key in existing_data.files}
+
         scene_data = np.load(output_root / "scenes" / (scene_id + ".npz"), allow_pickle=True)
         target_data = scene_data['pc_targ']
-
-        # Assert target_data ⊂ complete_target_pc (in nearest neighbor sense)
-        # from scipy.spatial import cKDTree
-        # tree = cKDTree(complete_target_pc)
-        # distances, _ = tree.query(target_data, k=1)
-        # assert np.all(distances < 1e-3), (
-        #     f"target_pc is not a subset of complete_target_pc (max dist: {distances.max()})"
-        # )
 
         # Optional: visualize and save
         import open3d as o3d
@@ -141,20 +154,18 @@ def process_scene(scene_id, raw_root, output_root):
         complete_target_pc_o3d.points = o3d.utility.Vector3dVector(complete_target_pc)
         target_pc_o3d = o3d.geometry.PointCloud()
         target_pc_o3d.points = o3d.utility.Vector3dVector(target_data)
-        o3d.io.write_point_cloud("complete_target_pc.ply", complete_target_pc_o3d)
-        o3d.io.write_point_cloud("target_pc.ply", target_pc_o3d)
+        o3d.io.write_point_cloud("complete_target_pc_new.ply", complete_target_pc_o3d)
+        o3d.io.write_point_cloud("target_pc_new.ply", target_pc_o3d)
 
-        # Save updated scene data with complete mesh
-        scene_path = output_root / "scenes" / (scene_id + ".npz")
-        if not scene_path.exists():
-            print(f"Warning: Scene file not found for {scene_id}")
-            return False
-
-        existing_data = np.load(scene_path, allow_pickle=True)
-        new_data = {key: existing_data[key] for key in existing_data.files}
+        print(f"complete_target_pc.shape: {complete_target_pc.shape}")
+        print(f"target_data.shape: {target_data.shape}")
+        
+        # Add complete target data
         new_data['complete_target_pc'] = complete_target_pc
         new_data['complete_target_mesh_vertices'] = complete_target_mesh.vertices.astype(np.float32)
         new_data['complete_target_mesh_faces'] = complete_target_mesh.faces.astype(np.int32)
+        
+        # Save updated scene data
         np.savez_compressed(scene_path, **new_data)
 
         return True
@@ -163,6 +174,26 @@ def process_scene(scene_id, raw_root, output_root):
         print(f"Error processing scene {scene_id}: {e}")
         return False
 
+
+def get_scene_list_from_directory(scenes_dir):
+    """
+    Get list of scene IDs from the scenes directory.
+    
+    Args:
+        scenes_dir: Path to scenes directory
+        
+    Returns:
+        list: List of scene IDs (without .npz extension)
+    """
+    scenes_dir = Path(scenes_dir)
+    if not scenes_dir.exists():
+        print(f"Warning: Scenes directory does not exist: {scenes_dir}")
+        return []
+    
+    scene_files = list(scenes_dir.glob("*.npz"))
+    scene_ids = [f.stem for f in scene_files]
+    
+    return scene_ids
 
 
 def main(args):
@@ -173,28 +204,35 @@ def main(args):
     print(f"Raw dataset root: {raw_root}")
     print(f"Output dataset root: {output_root}")
     
-    # Read dataset configuration
-    df = read_df(raw_root)
+    # Get scene list directly from scenes directory instead of reading grasps.csv
+    scenes_dir = output_root / "scenes"
+    all_scene_ids = get_scene_list_from_directory(scenes_dir)
+    
+    if not all_scene_ids:
+        print("No scene files found in scenes directory!")
+        return
     
     # Filter for both clutter and single scenes
-    # Clutter scenes: contain '_c_' (format: scene_c_target_id)
-    # Single scenes: contain '_s_' (format: scene_s_object_id_target_id)
-    clutter_scenes = df[df['scene_id'].str.contains('_c_')]['scene_id'].unique()
-    single_scenes = df[df['scene_id'].str.contains('_s_')]['scene_id'].unique()
-    
-    # Combine both types of scenes
-    all_scenes = np.concatenate([clutter_scenes, single_scenes])
-    # all_scenes = single_scenes
+    clutter_scenes = [s for s in all_scene_ids if '_c_' in s]
+    single_scenes = [s for s in all_scene_ids if '_s_' in s]
+    other_scenes = [s for s in all_scene_ids if '_c_' not in s and '_s_' not in s]
     
     print(f"Found {len(clutter_scenes)} clutter scenes")
-    print(f"Found {len(single_scenes)} single scenes")
-    print(f"Total {len(all_scenes)} scenes to process")
+    print(f"Found {len(single_scenes)} single scenes") 
+    print(f"Found {len(other_scenes)} other scenes")
+    print(f"Total {len(all_scene_ids)} scenes to process")
+    
+    # Process scenes that match our expected formats
+    scenes_to_process = clutter_scenes + single_scenes
+    if not scenes_to_process:
+        print("No clutter or single scenes found! Processing all scenes...")
+        scenes_to_process = all_scene_ids
     
     # Process each scene
     success_count = 0
-    total_count = len(all_scenes)
+    total_count = len(scenes_to_process)
     
-    for scene_id in tqdm(all_scenes, desc="Processing scenes"):
+    for scene_id in tqdm(scenes_to_process, desc="Processing scenes"):
         if process_scene(scene_id, raw_root, output_root):
             success_count += 1
         
@@ -204,7 +242,8 @@ def main(args):
     
     print(f"\nProcessing complete!")
     print(f"Successfully processed: {success_count}/{total_count} scenes")
-    print(f"Success rate: {success_count/total_count*100:.1f}%")
+    if total_count > 0:
+        print(f"Success rate: {success_count/total_count*100:.1f}%")
 
 
 if __name__ == "__main__":

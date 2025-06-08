@@ -46,7 +46,7 @@ def create_and_write_args_to_result_path(args):
     Then write the command-line arguments to a text file in that directory.
     """
     # Only keep certain model types
-    if args.type == "targo" or args.type == "targo_full_targ" or args.type == "targo_hunyun2":
+    if args.type == "targo" or args.type == "targo_full_targ" or args.type == "targo_hunyun2" or args.type == "targo_ptv3" or args.type == "ptv3_scene":
         model_name = f'{args.type}'
     elif args.type in ("giga", "giga_aff", "vgn", "giga_hr"):
         model_name = f'{args.type}'
@@ -88,7 +88,7 @@ def find_and_assign_first_checkpoint(args):
     from the corresponding model directory.
     """
     # Only keep certain model types
-    if args.type == "targo":
+    if args.type == "targo" or args.type == "targo_ptv3" or args.type == "ptv3_scene":
         model_name = f'{args.type}'
     elif args.type in ("giga", "giga_aff", "vgn", "giga_hr"):
         model_name = f'{args.type}'
@@ -113,7 +113,7 @@ def main(args):
             visualize=args.vis,
             cd_iou_measure=True
         )
-    elif args.type in ['giga', 'giga_aff', 'giga_hr', 'targo', 'targo_full_targ', 'targo_hunyun2', 'FGC-GraspNet', 'AnyGrasp']:
+    elif args.type in ['giga', 'giga_aff', 'giga_hr', 'targo', 'targo_full_targ', 'targo_hunyun2', 'targo_ptv3', 'ptv3_scene', 'FGC-GraspNet', 'AnyGrasp']:
         grasp_planner = VGNImplicit(
             args.model,
             args.type,
@@ -174,8 +174,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--type", default="targo_hunyun2",
-                        choices=["giga", "vgn", "targo", "targo_full_targ", "targo_hunyun2", "FGC-GraspNet", "AnyGrasp"],
-                        help="Model type: giga_hr | giga_aff | giga | vgn | targo | targo_full_targ | targo_hunyun2 | FGC-GraspNet | AnyGrasp")
+                        choices=["giga", "vgn", "targo", "targo_full_targ", "targo_hunyun2", "targo_ptv3", "ptv3_scene", 
+                                "FGC-GraspNet", "AnyGrasp"],
+                        help="Network to be used: vgn | giga_hr | giga_aff | giga | targo | targo_full_targ | targo_hunyun2 | targo_ptv3 | ptv3_scene | FGC-GraspNet | AnyGrasp")
     parser.add_argument("--occlusion-level", type=str, choices=["no", "slight", "medium"], default="medium",
                         help="Occlusion level for the experiment: no, slight or medium.")
     parser.add_argument("--hunyun2_path", type=str, default=None,

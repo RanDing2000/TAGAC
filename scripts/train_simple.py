@@ -33,8 +33,8 @@ def train_targo(args):
     print("=" * 60)
     
     cmd = [
-        "python", "scripts/train_targo_ptv3.py",
-        "--net", "targo_ptv3",
+        "python", "scripts/train_targo.py",
+        "--net", "targo",
         "--dataset", str(args.dataset),
         "--dataset_raw", str(args.dataset_raw),
         "--logdir", str(args.logdir / "targo"),
@@ -48,8 +48,14 @@ def train_targo(args):
         "--vis_data", "False",
         "--description", "targo_with_shape_completion",
         "--lr-schedule-interval", str(args.lr_schedule_interval),
-        "--gamma", str(args.gamma)
+        "--gamma", str(args.gamma),
+        "--use_wandb", str(args.use_wandb),
+        "--wandb_project", args.wandb_project,
+        "--wandb_log_freq", str(args.wandb_log_freq)
     ]
+    
+    if args.wandb_run_name:
+        cmd.extend(["--wandb_run_name", args.wandb_run_name + "_targo"])
     
     if args.augment:
         cmd.append("--augment")
@@ -82,8 +88,14 @@ def train_targo_full(args):
         "--vis_data", "False",
         "--description", "targo_full_complete_target",
         "--lr-schedule-interval", str(args.lr_schedule_interval),
-        "--gamma", str(args.gamma)
+        "--gamma", str(args.gamma),
+        "--use_wandb", str(args.use_wandb),
+        "--wandb_project", args.wandb_project,
+        "--wandb_log_freq", str(args.wandb_log_freq)
     ]
+    
+    if args.wandb_run_name:
+        cmd.extend(["--wandb_run_name", args.wandb_run_name + "_targo_full"])
     
     if args.augment:
         cmd.append("--augment")
@@ -124,7 +136,13 @@ def main():
     
     # Dataset options
     parser.add_argument("--ablation_dataset", type=str, default="", 
-                        help="Ablation dataset option: 1_10 | 1_100 | only_cluttered")
+                        help="Ablation dataset option: 1_10 | 1_100 | 1_100000 | only_cluttered")
+    
+    # Wandb parameters
+    parser.add_argument("--use_wandb", type=str2bool, default=True, help="Enable wandb logging")
+    parser.add_argument("--wandb_project", type=str, default="targo++", help="Wandb project name")
+    parser.add_argument("--wandb_run_name", type=str, default="", help="Wandb run name")
+    parser.add_argument("--wandb_log_freq", type=int, default=1, help="Log to wandb every N steps")
     
     args = parser.parse_args()
     
@@ -139,6 +157,11 @@ def main():
     print(f"Epochs: {args.epochs}")
     print(f"Batch size: {args.batch_size}")
     print(f"Learning rate: {args.lr}")
+    print("=" * 60)
+    print(f"Wandb logging: {'✓ ENABLED' if args.use_wandb else '✗ DISABLED'}")
+    if args.use_wandb:
+        print(f"Wandb project: {args.wandb_project}")
+        print(f"Wandb log frequency: every {args.wandb_log_freq} steps")
     print("=" * 60)
     
     # Run training based on model type

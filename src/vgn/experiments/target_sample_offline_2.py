@@ -243,7 +243,13 @@ def run(
         #     # print(f"planning time={time_end - time_begin}")
         
         mesh_pose_list = get_mesh_pose_list_from_world(sim.world, object_set)
-        scene_mesh, target_mesh = get_scene_from_mesh_pose_list(mesh_pose_list, tgt_id - 1, return_target_mesh=True)
+        result = get_scene_from_mesh_pose_list(mesh_pose_list, tgt_id - 1, return_target_mesh=True)
+        
+        if result is None:
+            print(f"Error: Could not get scene and target mesh for scene {scene_name}, skipping")
+            continue
+            
+        scene_mesh, target_mesh = result
         grasps, scores, timings["planning"], visual_dict = grasp_plan_fn(state, scene_mesh)
 
         planning_times.append(timings["planning"])

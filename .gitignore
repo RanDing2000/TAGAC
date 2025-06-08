@@ -14,6 +14,7 @@ targo_eval_results/
 data_scenes/
 demo/
 *.png
+visualization/
 *.pdf
 *.pyc
 *.pyo
@@ -35,6 +36,7 @@ data/models
 *.cu
 *.cuh
 *.cuh
+wandb/
 *.cuh
 *.pdf
 *.ply

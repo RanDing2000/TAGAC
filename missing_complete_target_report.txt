@@ -1,0 +1,72 @@
+数据集完整性详细报告
+==================================================
+
+统计摘要:
+总场景数: 100
+完整场景数: 47 (47.0%)
+缺少 complete_target_pc: 0
+缺少 complete_target_tsdf: 52
+两者都缺少: 0
+空数据: 0
+不可读文件: 1
+不存在文件: 0
+
+
+MISSING_TSDF (52 个):
+------------------------------
+  d713be8fce4e458a91d949afb40602cd_c_5: ['complete_target_tsdf']
+  d975b57f0fb44ee3840142f0d08419aa_c_3: ['complete_target_tsdf']
+  836dfb6175d5495ab7560a98483669f7_c_2: ['complete_target_tsdf']
+  cbc6e237ac4f49df959084f295319623_c_4: ['complete_target_tsdf']
+  9c4e11cc28344215980e72474f12651f_c_5: ['complete_target_tsdf']
+  ee08cb2a25404488b979b8b1e8ee73d9_c_2: ['complete_target_tsdf']
+  9ab28b46992c4166b07aefcdcbe8c121_c_4: ['complete_target_tsdf']
+  4cd96f11ceaa494a81ed1f807f4fcc75_c_1: ['complete_target_tsdf']
+  7c772c5622924715a5d88facff13b6b7_c_1: ['complete_target_tsdf']
+  ec6566553bdf483bbd20602d4df7ded0_c_3: ['complete_target_tsdf']
+  f3f48864d33440c58fd0f0add088d927_c_1: ['complete_target_tsdf']
+  6c1a22523d1d4e79bb0eec1e65f424fd_c_2: ['complete_target_tsdf']
+  73bf6854d82143f1ba40b4a5595150e3_c_1: ['complete_target_tsdf']
+  489b3c89b15b4130adbc4945fa666f54_c_4: ['complete_target_tsdf']
+  1976a96fbfea41969907811689fd0542_c_1: ['complete_target_tsdf']
+  a0a8c4b2042f4eb589fe7b69b912dfb1_c_3: ['complete_target_tsdf']
+  d532aa1408a944ed8a4e0a1a517189df_c_2: ['complete_target_tsdf']
+  684543d228574dcc98561926b6a47aa5_c_2: ['complete_target_tsdf']
+  b95c9c5741324527bd3688e727a73ed5_c_3: ['complete_target_tsdf']
+  4dde1bd7420642d4a384b0e919fc4485_c_1: ['complete_target_tsdf']
+  6bef794e30f8486cb7be9919e7f976c4_c_1: ['complete_target_tsdf']
+  2ae13114dcc74e7094aaed16a3dce6c7_c_3: ['complete_target_tsdf']
+  e7e785fc55c64e2884a085bb41acf835_c_2: ['complete_target_tsdf']
+  9a8ad80b1214439eb41318372d806f3a_c_3: ['complete_target_tsdf']
+  f5a4580119c843019d8c300202f6ecf3_c_2: ['complete_target_tsdf']
+  4145c85e4ff448f4a1059649ec761535_c_2: ['complete_target_tsdf']
+  4b4abe8c28594d51a946e00d006278f4_c_3: ['complete_target_tsdf']
+  bfa7c94a63f24d99ae00c6c8b3580ecc_c_4: ['complete_target_tsdf']
+  77eb2bb83fae4813b011aa16130aa72b_c_3: ['complete_target_tsdf']
+  086c3ebf0e1349a4907e5af4d8a4dd50_c_2: ['complete_target_tsdf']
+  b0d995ef93d94580a9d2c558931ea48c_c_2: ['complete_target_tsdf']
+  a708727be58a48c99f8d463f9a1fe92a_c_2: ['complete_target_tsdf']
+  83c12959476143d7aa553ffcaa2cdde4_c_1: ['complete_target_tsdf']
+  56fca39b8fe6430eb4a8783b895ecd78_c_1: ['complete_target_tsdf']
+  aa82e915a6c043d3b6338eea7ac98631_c_5: ['complete_target_tsdf']
+  41c17587ef2d4f6393393ad2ada0fc4f_c_1: ['complete_target_tsdf']
+  d9ced1cf296f41b384dc0c93636b4818_c_2: ['complete_target_tsdf']
+  9d3300e57fb444caa4220e828e6784aa_c_4: ['complete_target_tsdf']
+  fefd6f425bce4fe2a4f7ab8d45ccb6c6_c_2: ['complete_target_tsdf']
+  3940f3febbaa46ce8a275c9fce8e364c_c_3: ['complete_target_tsdf']
+  051ebe97358743eca38fb90f4abd1edd_c_4: ['complete_target_tsdf']
+  ff043d486bf14037abf940083449c5ff_c_1: ['complete_target_tsdf']
+  5fff2d6cbf6746cb91084c44c3d218ac_c_1: ['complete_target_tsdf']
+  271c884f647042a583059cf5bf41ce92_c_3: ['complete_target_tsdf']
+  bee3424a0d5d4e0ca6a3946b53cba775_c_2: ['complete_target_tsdf']
+  2662d1f9ddc94c5a926290aa569af260_c_3: ['complete_target_tsdf']
+  b42b1073f66f49c2a854e2852ece96b9_c_5: ['complete_target_tsdf']
+  1b62c6a7a2ff494d967670595d9f3c3a_c_3: ['complete_target_tsdf']
+  2ac5e31df32c481a8a2d3ad36ce71ccd_c_3: ['complete_target_tsdf']
+  1cc78dcc32b84466aa85ef0da1be71ed_c_2: ['complete_target_tsdf']
+  3ffa4d02b9854639968a198774462276_c_2: ['complete_target_tsdf']
+  513e887bcfcd4e2da7fe15d34e2a61bb_c_1: ['complete_target_tsdf']
+
+UNREADABLE (1 个):
+------------------------------
+  6776236d6eed443ebec7405633aadbdd_c_2: 

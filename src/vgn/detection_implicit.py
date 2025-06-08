@@ -22,7 +22,9 @@ from src.utils_targo import tsdf_to_mesh, filter_grasps_by_target
 
 from src.shape_completion.config import cfg_from_yaml_file
 from src.shape_completion import builder
-from src.FGCGraspNet.utils.collision_detector import ModelFreeCollisionDetector
+
+# Remove global imports of FGCGraspNet and AnyGrasp dependencies
+# These will be imported conditionally when needed
 # from src.shape_completion.models.AdaPoinTr import AdaPoinTr
 # from src.transformer.fusion_model import AdaPoinTr
 # from src.shape_completion.models.AdaPoinTr import AdaPoinTr
@@ -30,18 +32,28 @@ import sys
 # sys.path = [
 #     '../src/FGCGraspNet',
 # ] + sys.path
-from src.shape_completion.models.AdaPoinTr import AdaPoinTr
-from src.FGCGraspNet.models.FGC_graspnet import FGC_graspnet
-from src.FGCGraspNet.dataset.graspnet_dataset import GraspNetDataset
-from src.FGCGraspNet.models.decode import pred_decode
-from graspnetAPI import GraspGroup
-import sys
-sys.path.append('/usr/stud/dira/GraspInClutter/targo/src/anygrasp_sdk/grasp_detection')
+
+# Conditional imports - these will be imported inside functions when needed
+# from src.shape_completion.models.AdaPoinTr import AdaPoinTr
+# from src.FGCGraspNet.models.FGC_graspnet import FGC_graspnet
+# from src.FGCGraspNet.dataset.graspnet_dataset import GraspNetDataset
+# from src.FGCGraspNet.models.decode import pred_decode
+# from graspnetAPI import GraspGroup
+# sys.path.append('/usr/stud/dira/GraspInClutter/targo/src/anygrasp_sdk/grasp_detection')
 # from gsnet import AnyGrasp
-from graspnetAPI import GraspGroup
+# from graspnetAPI import GraspGroup
+
 LOW_TH = 0.0
 
 def get_grasps(net, end_points):
+    # Conditional imports for FGCGraspNet
+    try:
+        from src.FGCGraspNet.models.decode import pred_decode
+        from graspnetAPI import GraspGroup
+    except ImportError as e:
+        print(f"Warning: Could not import FGCGraspNet dependencies: {e}")
+        return None
+    
     # Forward pass
     with torch.no_grad():
         end_points = net(end_points)
@@ -52,6 +64,12 @@ def get_grasps(net, end_points):
     return gg
 
 def collision_detection(gg, cloud):
+    try:
+        from src.FGCGraspNet.utils.collision_detector import ModelFreeCollisionDetector
+    except ImportError as e:
+        print(f"Warning: Could not import collision detector: {e}")
+        return gg
+    
     mfcdetector = ModelFreeCollisionDetector(cloud, voxel_size=0.01)
     collision_mask = mfcdetector.detect(gg, approach_dist=0.05, collision_thresh=0.01)
     gg = gg[~collision_mask]
@@ -186,7 +204,12 @@ class VGNImplicit(object):
             self.net = load_network(model_path, self.device, model_type=model_type) 
             self.net = self.net.eval()
         elif model_type == 'FGC-GraspNet' or model_type == 'FGC_full_targ':
-            # sel.net = None
+            # Conditional import for FGCGraspNet
+            try:
+                from src.FGCGraspNet.models.FGC_graspnet import FGC_graspnet
+            except ImportError as e:
+                raise ImportError(f"FGC-GraspNet dependencies not available: {e}")
+            
             self.net = FGC_graspnet(input_feature_dim=0, num_view=300, num_angle=12, num_depth=4,
             cylinder_radius=0.05, hmin=0.055, hmax=0.30, is_training=False, is_demo=True)
             self.net.to(self.device)
@@ -194,6 +217,14 @@ class VGNImplicit(object):
             self.net.load_state_dict(checkpoint['model_state_dict'])
             self.net.eval()
         elif model_type == 'AnyGrasp' or model_type == 'AnyGrasp_full_targ':
+            # Conditional import for AnyGrasp
+            try:
+                import sys
+                sys.path.append('/usr/stud/dira/GraspInClutter/targo/src/anygrasp_sdk/grasp_detection')
+                from gsnet import AnyGrasp
+            except ImportError as e:
+                raise ImportError(f"AnyGrasp dependencies not available: {e}")
+            
             # Initialize AnyGrasp with configuration parameters
             parser = argparse.ArgumentParser()
             parser.add_argument('--checkpoint_path', default='/usr/stud/dira/GraspInClutter/targo/src/anygrasp_sdk/grasp_detection/log/checkpoint_detection.tar', help='Model checkpoint path')
@@ -211,14 +242,21 @@ class VGNImplicit(object):
             net_params_count = sum(p.numel() for p in self.net.parameters())
             print(f"Number of parameters in self.net: {net_params_count}")
         
-        sc_cfg = cfg_from_yaml_file("src/shape_completion/configs/AdaPoinTr.yaml")
-        sc_net = AdaPoinTr(sc_cfg.model)
-        builder.load_model(sc_net, "checkpoints/adapointr.pth")
-        sc_net = sc_net.eval()
-        self.sc_net = sc_net
-        sc_net_params_count = sum(p.numel() for p in self.sc_net.parameters())
-        print(f"Number of parameters in self.sc_net: {sc_net_params_count}")
+        # Conditional import for AdaPoinTr
+        try:
+            from src.shape_completion.models.AdaPoinTr import AdaPoinTr
+        except ImportError as e:
+            print(f"Warning: Could not import AdaPoinTr: {e}")
+            sc_net = None
+        else:
+            sc_cfg = cfg_from_yaml_file("src/shape_completion/configs/AdaPoinTr.yaml")
+            sc_net = AdaPoinTr(sc_cfg.model)
+            builder.load_model(sc_net, "checkpoints/adapointr.pth")
+            sc_net = sc_net.eval()
+            sc_net_params_count = sum(p.numel() for p in sc_net.parameters())
+            print(f"Number of parameters in self.sc_net: {sc_net_params_count}")
         
+        self.sc_net = sc_net
         self.qual_th = qual_th
         self.best = best
         self.force_detection = force_detection
@@ -263,18 +301,37 @@ class VGNImplicit(object):
                 qual_vol, rot_vol, width_vol, completed_targ_grid = predict(inputs, self.pos, self.net,  None, state.type, self.device, visual_dict, hunyun2_path, scene_name, target_mesh_gt=target_mesh_gt)
             
 
-        elif state.type == 'targo' or state.type == 'targo_full_targ' or state.type == 'targo_hunyun2':
+        elif state.type == 'targo' or state.type == 'targo_full_targ' or state.type == 'targo_hunyun2' or state.type == 'targo_ptv3' or state.type == 'ptv3_scene':
             scene_no_targ_pc = state.scene_no_targ_pc
             scene_no_targ_pc = np.concatenate((scene_no_targ_pc, self.plane), axis=0)
-            targ_pc = state.targ_pc
-            inputs = (scene_no_targ_pc, targ_pc)    # scene_no_targ_pc is tsdf surface points, target pc is the depth backprojected points
+            
+            # Handle different input formats for PointTransformerV3 models
+            if state.type == 'targo_ptv3':
+                # For targo_ptv3: use both scene and target point clouds
+                targ_pc = state.targ_pc
+                inputs = (scene_no_targ_pc, targ_pc)    # scene_no_targ_pc is tsdf surface points, target pc is the depth backprojected points
+            elif state.type == 'ptv3_scene':
+                # For ptv3_scene: only use scene point cloud (target is included in scene)
+                # state.scene_no_targ_pc should actually be the full scene including target for ptv3_scene
+                if hasattr(state, 'targ_pc') and state.targ_pc is not None:
+                    # If target PC is available, concatenate it with scene for full scene representation
+                    full_scene_pc = np.concatenate((scene_no_targ_pc, state.targ_pc), axis=0)
+                else:
+                    # Use scene_no_targ_pc as is (it should already include target for ptv3_scene)
+                    full_scene_pc = scene_no_targ_pc
+                inputs = (full_scene_pc, None)  # Only scene input, no separate target
+            else:
+                # Original targo models
+                targ_pc = state.targ_pc
+                inputs = (scene_no_targ_pc, targ_pc)    # scene_no_targ_pc is tsdf surface points, target pc is the depth backprojected points
 
             # Handle both tensor and numpy array inputs
             scene_pc = inputs[0]
-            targ_pc = inputs[1]
+            targ_pc = inputs[1] if inputs[1] is not None else np.array([])  # Handle None case for ptv3_scene
             save_point_cloud_as_ply(scene_pc, 'scene_no_targ_pc.ply')
-            save_point_cloud_as_ply(targ_pc, 'targ_pc.ply')
-            visual_dict['targ_pc'] = state.targ_pc
+            if targ_pc.size > 0:  # Only save if not empty
+                save_point_cloud_as_ply(targ_pc, 'targ_pc.ply')
+                visual_dict['targ_pc'] = state.targ_pc
             voxel_size, size = state.tsdf.voxel_size, state.tsdf.size
             with torch.no_grad():
                 qual_vol, rot_vol, width_vol, completed_targ_grid, cd, iou = predict(inputs, self.pos, self.net, self.sc_net, state.type, self.device, visual_dict, hunyun2_path, scene_name, cd_iou_measure=True, target_mesh_gt=target_mesh_gt)
@@ -601,7 +658,7 @@ class VGNImplicit(object):
             
             return grasps, scores, 0, g1b_vis_dict, 0, 0
         
-        if state.type == 'targo' or state.type == 'targo_full_targ' or state.type == 'targo_hunyun2':
+        if state.type == 'targo' or state.type == 'targo_full_targ' or state.type == 'targo_hunyun2' or state.type == 'targo_ptv3' or state.type == 'ptv3_scene':
             # Handle both numpy array and tensor inputs
 
             if isinstance(completed_targ_grid, np.ndarray):
@@ -663,12 +720,16 @@ class VGNImplicit(object):
         #     completed_targ_grid = state.targ_grid
         #     cd = 0
         #     iou = 0
-        if state.type == 'targo' or state.type == 'targo_full_targ' or state.type == 'targo_hunyun2':
+        if state.type == 'targo' or state.type == 'targo_full_targ' or state.type == 'targo_hunyun2' or state.type == 'targo_ptv3' or state.type == 'ptv3_scene':
             return grasps, scores, toc, cd, iou
         elif state.type == 'giga':
             return grasps, scores, toc, cd, iou
-        else:
-            return grasps, scores, toc
+        elif state.type == 'vgn':
+            return qual_vol, rot_vol, width_vol
+        elif state.type == 'AnyGrasp' or state.type == 'FGC-GraspNet':
+            # return grasp, score
+            return gg
+
 
 def bound(qual_vol, voxel_size, limit=[0.02, 0.02, 0.055]):
     # avoid grasp out of bound [0.02  0.02  0.055]
@@ -703,9 +764,24 @@ def predict(inputs, pos, net, sc_net, type, device, visual_dict=None, hunyun2_pa
             completed_targ_grid = targ_grid
 
 
-    elif type == 'targo' or type == 'targo_full_targ' or type == 'targo_hunyun2':
+    elif type == 'targo' or type == 'targo_full_targ' or type == 'targo_hunyun2' or type == 'targo_ptv3' or type == 'ptv3_scene':
         scene_no_targ_pc = torch.from_numpy(inputs[0]).unsqueeze(0).to(device)
-        targ_pc = torch.from_numpy(inputs[1]).unsqueeze(0).to(device)
+        
+        # Handle different input formats for PointTransformerV3 models
+        if type == 'targo_ptv3':
+            # For targo_ptv3: use both scene and target point clouds
+            targ_pc = torch.from_numpy(inputs[1]).unsqueeze(0).to(device)
+        elif type == 'ptv3_scene':
+            # For ptv3_scene: only scene input, no separate target point cloud
+            # Use a dummy target point cloud or handle None case in the model
+            if inputs[1] is not None:
+                targ_pc = torch.from_numpy(inputs[1]).unsqueeze(0).to(device)
+            else:
+                # Create a dummy target point cloud for ptv3_scene (will not be used)
+                targ_pc = torch.zeros((1, 100, 3)).to(device)  # Small dummy point cloud
+        else:
+            # Original targo models
+            targ_pc = torch.from_numpy(inputs[1]).unsqueeze(0).to(device)
 
         with torch.no_grad():
             if type == 'targo':
@@ -726,9 +802,10 @@ def predict(inputs, pos, net, sc_net, type, device, visual_dict=None, hunyun2_pa
                 cd, iou = compute_chamfer_and_iou(target_mesh_gt, targ_trimesh)
                 completed_targ_pc = filter_and_pad_point_clouds(completed_targ_pc)
             
-            elif type == 'targo_full_targ':
+            elif type == 'targo_full_targ' or type == 'targo_ptv3' or type == 'ptv3_scene':
+                # For all these model types: use complete target mesh directly, no shape completion needed
                 start_pc = time.time()
-                # Sample points from ground truth target mesh
+                # Sample points from ground truth target mesh (from complete_target preprocessing)
                 completed_targ_pc = target_mesh_gt.sample(2048)
                 completed_targ_pc = completed_targ_pc.astype(np.float32)
                 completed_targ_grid = point_cloud_to_tsdf(completed_targ_pc)
@@ -737,13 +814,13 @@ def predict(inputs, pos, net, sc_net, type, device, visual_dict=None, hunyun2_pa
                 completed_targ_pc = torch.from_numpy(completed_targ_pc).to(device).unsqueeze(0)
                 completed_targ_pc = completed_targ_pc / 0.3 - 0.5
                 
-                # Perfect reconstruction means CD and IoU are ideal
+                # Perfect reconstruction means CD and IoU are ideal (since using ground truth)
                 cd = 0.0
                 iou = 1.0
                 
                 completed_targ_pc = filter_and_pad_point_clouds(completed_targ_pc)
-
-            if type == 'targo_hunyun2':
+                
+            elif type == 'targo_hunyun2':
                 start_pc = time.time()
                 # hunyun2_path = '/usr/stud/dira/GraspInClutter/Gen3DSR/output_amodal/ycb_amodal_medium_occlusion_icp_v7_only_gt_1000'
                 scene_path = hunyun2_path + '/' + scene_name + '/reconstruction/targ_obj_hy3dgen_align.ply'
@@ -804,7 +881,14 @@ def predict(inputs, pos, net, sc_net, type, device, visual_dict=None, hunyun2_pa
             #     scene_mesh = None
             # elif type == 'FGC-GraspNet':
                 
-            targ_completed_scene_pc = torch.cat([scene_no_targ_pc, completed_targ_pc], dim=1)
+            # Create combined scene for model input
+            if type == 'ptv3_scene':
+                # For ptv3_scene, use only the scene point cloud
+                targ_completed_scene_pc = scene_no_targ_pc
+            else:
+                # For other targo variants, combine scene and completed target
+                targ_completed_scene_pc = torch.cat([scene_no_targ_pc, completed_targ_pc], dim=1)
+            
             save_point_cloud_as_ply(targ_completed_scene_pc[0].cpu().numpy(), 'targ_completed_scene_pc.ply')
 
             ## save targ_completed_scene_pc
@@ -821,8 +905,13 @@ def predict(inputs, pos, net, sc_net, type, device, visual_dict=None, hunyun2_pa
         #     path = f'{mesh_dir}/{mesh_name}_completed_targ_pc.ply'
         #     save_point_cloud_as_ply(targ_pc[0].cpu().numpy(), path)
         
-        if type == 'targo' or type == 'targo_full_targ' or type == 'targo_hunyun2':
-            inputs = (targ_completed_scene_pc, completed_targ_pc)
+        if type == 'targo' or type == 'targo_full_targ' or type == 'targo_hunyun2' or type == 'targo_ptv3' or type == 'ptv3_scene':
+            if type == 'ptv3_scene':
+                # For ptv3_scene, only pass scene point cloud
+                inputs = (targ_completed_scene_pc, None)
+            else:
+                # For other targo variants, pass both scene and completed target
+                inputs = (targ_completed_scene_pc, completed_targ_pc)
     # if type != 'FGC-GraspNet' and type != 'AnyGrasp':
         # targ_completed_scene_pc = inputs[0]
         # completed_targ_pc = inputs[1]
@@ -933,7 +1022,7 @@ def predict(inputs, pos, net, sc_net, type, device, visual_dict=None, hunyun2_pa
                 print(f"Error during target mesh processing: {e}")
             # save_point_cloud_as_ply(scene_mesh.vertices, 'scene_mesh.ply')
             # target_mesh.export('target_mesh_pred.ply')
-        if not type == 'AnyGrasp' and not type == 'AnyGrasp_full_targ':
+        if not type == 'AnyGrasp' and not type == 'FGC-GraspNet' and not type == 'AnyGrasp_full_targ' and not type == 'FGC_full_targ':
             net_params_count = sum(p.numel() for p in net.parameters())
             print(f"Number of parameters in self.net: {net_params_count:,}")
     time_grasp = time.time() - time_grasp_start
@@ -947,7 +1036,7 @@ def predict(inputs, pos, net, sc_net, type, device, visual_dict=None, hunyun2_pa
         rot_vol = rot_vol.cpu().squeeze().numpy()
         width_vol = width_vol.cpu().squeeze().numpy()
     # if (sc_net != None nyun2_path) and cd_iou_measure:
-    if type == 'targo' or type == 'targo_full_targ' or type == 'targo_hunyun2':
+    if type == 'targo' or type == 'targo_full_targ' or type == 'targo_hunyun2' or type == 'targo_ptv3' or type == 'ptv3_scene':
         return qual_vol, rot_vol, width_vol, completed_targ_grid, cd, iou
     elif type == 'giga':
         return qual_vol, rot_vol, width_vol, cd, iou

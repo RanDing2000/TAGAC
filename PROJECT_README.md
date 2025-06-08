@@ -12,9 +12,232 @@
 - **TARGO PTV3** (`targo_ptv3`): TARGO variant based on PointTransformerV3 architecture with shape completion
 - **PTV3 Scene** (`ptv3_scene`): PointTransformerV3-based variant for scene understanding
 
+## Experiment Tracking with Wandb
+
+All training scripts include comprehensive Wandb integration for experiment tracking and monitoring.
+
+### Wandb Features
+
+#### Automatic Logging
+- **Training Metrics**: Loss components (loss_all, loss_qual, loss_rot, loss_width), accuracy, precision, recall
+- **Validation Metrics**: Real grasp evaluation success rates on slight occlusion validation data
+- **Learning Rate**: Automatic learning rate tracking
+- **Step-level Metrics**: Detailed step-by-step training progress
+- **Model Configuration**: All hyperparameters and training settings
+
+#### Validation Success Rate Tracking
+All training scripts perform real grasp evaluation during training using slight occlusion validation data:
+- **YCB Slight Occlusion**: Uses subset of YCB slight occlusion scenes for validation
+- **Real Grasp Success Rate**: Measures actual grasp performance, not just model metrics
+- **Best Model Selection**: Uses validation success rate for model checkpoint selection
+- **Wandb Logging**: Success rates logged to `val/grasp_success_rate` metric
+
+#### Wandb Parameters
+```bash
+--use_wandb True                    # Enable/disable wandb logging (default: True)
+--wandb_project "targo++"          # Wandb project name (default: "targo++")
+--wandb_run_name "custom_name"     # Custom run name (auto-generated if not provided)
+--wandb_log_freq 1                 # Log frequency for step-level metrics (default: 1)
+```
+
+#### Auto-generated Run Names
+- **TARGO**: `targo_YYMMDD-HHMMSS`
+- **TARGO Full**: `targo_full_YYMMDD-HHMMSS`
+- **TARGO PTV3**: `targo_ptv3_YYMMDD-HHMMSS`
+
+#### Example Usage with Wandb
+```bash
+# Train with custom wandb settings
+python scripts/train_targo.py \
+    --net targo \
+    --epochs 50 \
+    --batch-size 32 \
+    --use_wandb True \
+    --wandb_project "my_targo_experiments" \
+    --wandb_run_name "targo_experiment_1" \
+    --wandb_log_freq 10
+
+# Train with wandb disabled
+python scripts/train_targo_full.py \
+    --net targo \
+    --epochs 50 \
+    --use_wandb False
+
+# Train with auto-generated run name
+python scripts/train_targo_ptv3.py \
+    --net targo_ptv3 \
+    --epochs 50 \
+    --use_wandb True
+```
+
+#### Wandb Dashboard Metrics
+- `train/loss_all`, `train/loss_qual`, `train/loss_rot`, `train/loss_width`
+- `train/accuracy`, `train/precision`, `train/recall`
+- `val/grasp_success_rate` - Real grasp evaluation success rate
+- `learning_rate` - Current learning rate
+- `step/train_*` - Step-level training metrics
+
 ## Designing new network
-### 1. generate complete target mesh for training the network
-```scripts/preprocess_complete_target_mesh.py
+
+### 1. Complete Target Mesh Generation 
+
+Networks that require complete target meshes (like TARGO Full) need different preprocessing approaches for training and testing datasets.
+
+#### A. Training Dataset Preprocessing (Original Method)
+
+For **training datasets** with grasps.csv files, use the original preprocessing method:
+
+```bash
+# Environment Setup for Original TARGO
+conda activate targo
+module load compiler/gcc-8.3
+module load cuda/11.3.0
+
+# Process training dataset (requires grasps.csv)
+python scripts/preprocess_complete_target_mesh_training.py \
+    --raw_root /path/to/training/dataset \
+    --output_root /path/to/training/dataset \
+    --max_scenes 0  # 0 = process all scenes
+```
+
+**Key characteristics of training dataset preprocessing:**
+- Reads scene list from `grasps.csv` file
+- Processes scenes that have grasp annotations
+- Used for datasets during model training
+- Requires `grasps.csv`, `scenes/`, and `mesh_pose_dict/` directories
+
+#### B. Test Dataset Preprocessing (Updated Method) 
+
+For **test/evaluation datasets** without grasps.csv files, use the updated preprocessing method:
+
+```bash
+# Environment Setup for Original TARGO
+conda activate targo
+module load compiler/gcc-8.3
+module load cuda/11.3.0
+
+# Process single test dataset (no grasps.csv required)
+python scripts/preprocess_complete_target_mesh.py \
+    --raw_root /path/to/test/dataset \
+    --output_root /path/to/test/dataset \
+    --max_scenes 0  # 0 = process all scenes
+
+# Examples for test datasets:
+# ACRONYM test datasets
+python scripts/preprocess_complete_target_mesh.py \
+    --raw_root data_scenes/acronym/acronym-slight-occlusion-1000 \
+    --output_root data_scenes/acronym/acronym-slight-occlusion-1000
+
+# YCB test datasets  
+python scripts/preprocess_complete_target_mesh.py \
+    --raw_root data_scenes/ycb/maniskill-ycb-v2-slight-occlusion-1000 \
+    --output_root data_scenes/ycb/maniskill-ycb-v2-slight-occlusion-1000
+```
+
+**Key characteristics of test dataset preprocessing:**
+- Reads scene list directly from `scenes/` directory
+- Processes all available scenes (no dependency on grasps.csv)
+- Used for datasets during model evaluation/testing
+- Only requires `scenes/` and `mesh_pose_dict/` directories
+
+#### C. Batch Processing for Test Datasets
+
+For automatically processing all test datasets (ACRONYM and YCB):
+
+```bash
+# Environment Setup for Original TARGO
+conda activate targo
+module load compiler/gcc-8.3
+module load cuda/11.3.0
+
+# Process all test datasets automatically
+python scripts/batch_preprocess_complete_target.py \
+    --base_path data_scenes \
+    --max_scenes 0  # 0 = process all scenes
+
+# Process with limited scenes for testing
+python scripts/batch_preprocess_complete_target.py \
+    --base_path data_scenes \
+    --max_scenes 100  # Process only 100 scenes per dataset
+```
+
+The batch processing script will automatically process these **test datasets**:
+
+**ACRONYM Test Datasets:**
+- `data_scenes/acronym/acronym-slight-occlusion-1000`
+- `data_scenes/acronym/acronym-middle-occlusion-1000`
+- `data_scenes/acronym/acronym-no-occlusion-1000`
+
+**YCB Test Datasets:**
+- `data_scenes/ycb/maniskill-ycb-v2-slight-occlusion-1000`
+- `data_scenes/ycb/maniskill-ycb-v2-middle-occlusion-1000`
+- `data_scenes/ycb/maniskill-ycb-v2-no-occlusion-1000`
+
+#### D. Key Differences Between Training and Test Dataset Processing
+
+| Aspect | Training Dataset Processing | Test Dataset Processing |
+|--------|----------------------------|------------------------|
+| **Script** | `preprocess_complete_target_mesh_training.py` | `preprocess_complete_target_mesh.py` |
+| **Batch Script** | N/A | `batch_preprocess_complete_target.py` |
+| **Data Source** | Reads from `grasps.csv` | Reads from `scenes/` directory |
+| **Requirements** | `grasps.csv` + `scenes/` + `mesh_pose_dict/` | `scenes/` + `mesh_pose_dict/` |
+| **Scene Selection** | Only scenes with grasp annotations | All available scenes |
+| **Use Case** | Model training | Model evaluation/testing |
+| **Dataset Examples** | Training datasets with grasp labels | `data_scenes/acronym/*`, `data_scenes/ycb/*` |
+
+#### E. What Complete Target Preprocessing Does (Both Methods)
+
+Both preprocessing methods perform the same operations:
+
+1. **Reads mesh_pose_dict**: Loads object mesh paths, scales, and poses from the scene's mesh_pose_dict file
+2. **Generates complete meshes**: Applies transformations to create complete target meshes in world coordinates
+3. **Samples point clouds**: Generates 2048-point target point clouds from complete mesh surfaces
+4. **Updates scene files**: Adds the following keys to scene .npz files:
+   - `complete_target_pc`: Complete target point cloud (2048 points)
+   - `complete_target_mesh_vertices`: Complete target mesh vertices
+   - `complete_target_mesh_faces`: Complete target mesh faces
+
+#### F. Requirements and Directory Structure
+
+**For Training Datasets:**
+```
+dataset/
+├── grasps.csv              # Required: Contains grasp annotations
+├── scenes/                 # Required: Scene .npz files
+│   ├── scene1.npz
+│   └── scene2.npz
+└── mesh_pose_dict/         # Required: Mesh pose information
+    ├── scene1.npz
+    └── scene2.npz
+```
+
+**For Test Datasets:**
+```
+dataset/
+├── scenes/                 # Required: Scene .npz files
+│   ├── scene1.npz
+│   └── scene2.npz
+└── mesh_pose_dict/         # Required: Mesh pose information
+    ├── scene1.npz
+    └── scene2.npz
+```
+
+#### G. Usage in Training and Testing
+
+After preprocessing, you can use complete target data:
+
+```bash
+# Train TARGO Full with complete target point clouds
+python scripts/train_targo_full.py \
+    --use_complete_targ True \
+    --shape_completion False \
+    # ... other parameters
+
+# Test/evaluate with complete target data
+python scripts/inference.py \
+    --model targo_full \
+    --dataset /path/to/test/dataset \
+    # ... other parameters
 ```
 
 ## Model Training
@@ -27,11 +250,11 @@ We provide a unified training interface for both original TARGO and PointTransfo
 ```bash
 # Environment Setup for Original TARGO
 conda activate targo
-module load compiler/gcc-8.3
+# module load compiler/gcc-8.3
 module load cuda/11.3.0
 
 # Train original TARGO with shape completion
-python scripts/train_simple.py --model_type targo --epochs 50 --batch-size 32 --augment
+python scripts/train_simple.py --model_type targo --epochs 50 --batch-size 2 --augment
 
 # Train original TARGO Full with complete target point clouds (no shape completion)
 python scripts/train_simple.py --model_type targo_full --epochs 50 --batch-size 32 --augment
@@ -57,7 +280,7 @@ conda activate ptv3
 module load cuda/12.1.0
 
 # Train PointTransformerV3-based TARGO variant
-python scripts/train_targo_ptv3.py --net targo_ptv3 --epochs 50 --batch-size 32 --augment
+python scripts/train_targo_ptv3.py --net targo_ptv3 --epochs 50 --batch-size 2 --augment
 
 # Train PTV3 Scene variant
 python scripts/train_ptv3_scene.py --net ptv3_scene --epochs 50 --batch-size 32 --augment
