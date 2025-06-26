@@ -2,25 +2,15 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Debug TARGO-Net (targo_ptv3)",
-      "type": "python",
-      "request": "launch",
-      "program": "${workspaceFolder}/scripts/train_targo_ptv3.py",
-      "console": "integratedTerminal",
-      "args": [
-        "--net", "targo_ptv3",
-        "--batch-size", "2"
-      ]
-    },
-    {
       "name": "Debug TARGO-Net (ptv3_scene)",
       "type": "python",
       "request": "launch",
-      "program": "${workspaceFolder}/scripts/train_targo_ptv3.py",
+      "program": "${workspaceFolder}/scripts/train/train_targo_ptv3.py",
       "console": "integratedTerminal",
       "args": [
         "--net", "ptv3_scene",
         "--batch-size", "2",
+        "--ablation_dataset", "1_100000"
       ]
     },
     {

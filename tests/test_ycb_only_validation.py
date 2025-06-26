@@ -21,7 +21,7 @@ def test_ycb_only_validation():
     print("[DEBUG] Testing YCB-only validation...")
     
     # Import the validation function from the training script
-    from scripts.train_targo_full import perform_validation_grasp_evaluation
+    from scripts.train.train_targo_full import perform_validation_grasp_evaluation
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     logdir = Path("/tmp/test_ycb_validation")

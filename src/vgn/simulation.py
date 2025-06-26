@@ -15,6 +15,7 @@ from src.vgn.utils import btsim, workspace_lines
 from src.utils_targo import save_point_cloud_as_ply
 from src.vgn.utils.transform import Rotation, Transform
 import pathlib
+from src.utils_giga import point_cloud_to_tsdf
 import random
 import trimesh
 import trimesh.transformations as tra
@@ -388,6 +389,154 @@ class ClutterRemovalSim(object):
             else:
                 self.remove_and_wait()
             attempts += 1
+        
+        
+    def acquire_single_tsdf_target_grid_ptv3_scene(
+        self,
+        curr_scene_path,
+        target_id,
+        resolution=40,
+        model_type=None,
+        curr_mesh_pose_list=None,
+        hunyuan3D_ptv3=False,
+        hunyuan3D_path=None,
+    ):
+        """
+        Acquire TSDF and point clouds for 'ptv3_scene' model.
+        Returns:
+            tsdf: TSDFVolume object
+            timing: integration time
+            scene_pc_full: normalized + filtered full scene point cloud
+            complete_targ_pc: complete target point cloud
+            complete_targ_tsdf: complete target TSDF grid
+            grid_targ: partial target TSDF grid
+            occ_level: occlusion level
+        """
+        # Setup TSDF volume
+        vis_dict = {}
+        assert model_type == "ptv3_scene", f"PTV3SceneImplicit only supports ptv3_scene model type, got {model_type}"
+        tsdf = TSDFVolume(self.size, resolution)
+
+        # Camera pose configuration
+        half_size = self.size / 2
+        origin = Transform(Rotation.identity(), np.r_[half_size, half_size, 0])
+        theta, phi = np.pi / 6.0, 0
+        r = 2.0 * self.size
+        extrinsic = camera_on_sphere(origin, r, theta, phi)
+
+        # Load data from .npz
+        data = np.load(curr_scene_path, allow_pickle=True)
+        depth_img = data["depth_imgs"]
+        vis_dict["depth_img"] = depth_img
+        seg_img = data["segmentation_map"]
+        tgt_mask = data["mask_targ"]
+        scene_mask = data["mask_scene"]
+
+        # Validate masks
+        assert np.all(scene_mask == (seg_img > 0))
+        assert np.all(tgt_mask == (seg_img == target_id))
+
+        # Compute occlusion level
+        occ_level = 0.0
+        if curr_mesh_pose_list is not None:
+            if not self.save_occ_level_dict:
+                occ_level = self.occ_level_dict[curr_mesh_pose_list]
+            else:
+                sim_single = sim_select_scene(self, [0, target_id])
+                _, seg_img_single = sim_single.camera.render_with_seg(extrinsic)[1:3]
+                occ_level = 1 - np.sum(seg_img == target_id) / np.sum(seg_img_single == 1)
+                self.occ_level_dict[curr_mesh_pose_list] = occ_level
+        if occ_level > 0.9:
+            print("High occlusion level")
+
+        # TSDF integration
+        tic = time.time()
+        depth_input = (depth_img * scene_mask)[0].astype(np.float32)
+        tsdf.integrate(depth_input, self.camera.intrinsic, extrinsic)
+
+        # tsdf.integrate((depth_img * scene_mask)[0], self.camera.intrinsic, extrinsic)
+        timing = time.time() - tic
+
+        # Load and process point clouds
+        ## load plane.npy
+        plane = np.load("/usr/stud/dira/GraspInClutter/grasping/setup/plane_sampled.npy")
+        plane = plane.astype(np.float32)
+        pc_scene_no_targ = np.concatenate([data["pc_scene_no_targ"], plane], axis=0)
+        # scene_pc_scene_no_targ = pc_scene_no_targ / 0.3 - 0.5
+        from utils_giga import filter_and_pad_point_clouds
+        pc_scene_no_targ = filter_and_pad_point_clouds(
+            torch.from_numpy(pc_scene_no_targ).unsqueeze(0).float(),
+            lower_bound=torch.tensor([0, 0, 0]),
+             upper_bound=torch.tensor([0.3, 0.3, 0.3]),
+        ).squeeze(0).numpy()
+        ## concate with plane
+        pc_scene_no_targ = np.concatenate([pc_scene_no_targ, plane], axis=0)
+        pc_scene_no_targ = pc_scene_no_targ / 0.3 - 0.5
+
+        # Load complete target data based on hunyuan3D_ptv3 flag
+        iou_value = 1.0
+        cd_value = 0.0
+        if hunyuan3D_ptv3 and hunyuan3D_path is not None:
+            # Load from hunyuan3D path
+            scene_name = curr_mesh_pose_list if curr_mesh_pose_list is not None else "unknown"
+            hunyuan3D_scene_path = os.path.join(hunyuan3D_path, scene_name, "scenes")
+            # hunyuan3D_crop_path = os.path.join(hunyuan3D_path, scene_name, "crops")
+            scene_rgba_path = os.path.join(hunyuan3D_path, scene_name, "crops", "scene_rgba.png")
+            vis_dict["scene_rgba_path"] = scene_rgba_path
+
+            eval_recon_file = os.path.join(hunyuan3D_path, scene_name, "evaluation", "meta_evaluation.txt")
+            # Read CD (Chamfer Distance) and IoU from meta_evaluation.txt
+            # cd_value, iou_value = None, None
+            if not os.path.exists(eval_recon_file):
+                cd_value = -1
+                iou_value = -1
+            elif os.path.exists(eval_recon_file):
+                with open(eval_recon_file, 'r') as f:
+                    for line in f:
+                        if 'Chamfer Distance v7_gt' in line:
+                            cd_value = float(line.strip().split(':')[-1])
+                        if 'Chamfer_watertight' in line:
+                            cd_value = float(line.strip().split(':')[-1])
+                        if 'IoU v7_gt' in line:
+                            iou_value = float(line.strip().split(':')[-1])
+                        if 'IoU_watertight' in line:
+                            iou_value = float(line.strip().split(':')[-1])
+                        # elif 'IoU v7_gt' in line:
+                        #     iou_value = float(line.strip().split(':')[-1])
+            # with open(eval_recon_file, "r") as f:
+            
+            # Try to load hunyuan3D reconstructed data
+            pc_file_path = os.path.join(hunyuan3D_scene_path, "complete_targ_hunyuan_pc.npy")
+            tsdf_file_path = os.path.join(hunyuan3D_scene_path, "complete_targ_hunyuan_tsdf.npy")
+            
+            if os.path.exists(pc_file_path):
+                complete_targ_pc = np.load(pc_file_path).astype(np.float32)
+                complete_targ_tsdf = np.load(tsdf_file_path).astype(np.float32)
+            else:
+                if not os.path.exists(hunyuan3D_scene_path):
+                    os.makedirs(hunyuan3D_scene_path, exist_ok=True)
+                reconstructed_mesh = o3d.io.read_triangle_mesh(os.path.join(hunyuan3D_path, scene_name, "reconstruction", "targ_obj_hy3dgen_align.ply"))
+                reconstructed_mesh.compute_vertex_normals()
+                pcd = reconstructed_mesh.sample_points_poisson_disk(number_of_points=512, init_factor=5)
+                complete_targ_pc = np.asarray(pcd.points)
+                complete_targ_tsdf = point_cloud_to_tsdf(complete_targ_pc)
+                ## save to pc_file_path and tsdf_file_path
+                np.save(pc_file_path, complete_targ_pc)
+                np.save(tsdf_file_path, complete_targ_tsdf)
+       
+
+        # Process complete target point cloud
+        complete_targ_pc = filter_and_pad_point_clouds(
+            torch.from_numpy(complete_targ_pc).unsqueeze(0).float(),
+            lower_bound=torch.tensor([0, 0, 0]),
+            upper_bound=torch.tensor([0.3, 0.3, 0.3]),
+        ).squeeze(0).numpy()
+        complete_targ_pc = complete_targ_pc / 0.3 - 0.5
+        
+        grid_targ = data["grid_targ"]
+
+        return tsdf, timing, pc_scene_no_targ, complete_targ_pc, complete_targ_tsdf, grid_targ, occ_level, iou_value, cd_value, vis_dict
+
 
     def acquire_single_tsdf_target_grid(
         self,
@@ -539,6 +688,9 @@ class ClutterRemovalSim(object):
                 targ_depth_pc = np.load(curr_scene_path)["pc_depth_targ"].astype(np.float32)
                 scene_pc_full = np.concatenate([scene_pc_full, targ_depth_pc], axis=0)
             
+            complete_targ_pc = np.load(curr_scene_path)['complete_target_pc'].astype(np.float32)
+            complete_targ_tsdf = np.load(curr_scene_path)['complete_target_tsdf']
+            
             # Normalize to [-0.5, 0.5] range
             scene_pc_full = scene_pc_full / 0.3 - 0.5
             
@@ -550,7 +702,7 @@ class ClutterRemovalSim(object):
             
             # For ptv3_scene, we return the full scene point cloud as the main input
             # No separate target point cloud needed
-            return tsdf, timing, scene_pc_full, None, targ_grid, occ_level
+            return tsdf, timing, scene_pc_full, complete_targ_pc, complete_targ_tsdf, targ_grid, occ_level
             
         elif model == "AnyGrasp_full_targ" or model == "FGC_full_targ":
             # Similar to targo type, but get both scene_no_targ_pc and targ_pc 

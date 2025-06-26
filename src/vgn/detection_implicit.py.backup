@@ -743,6 +743,7 @@ class VGNImplicit(object):
             # return grasp, score
             return gg
 
+
 def bound(qual_vol, voxel_size, limit=[0.02, 0.02, 0.055]):
     # avoid grasp out of bound [0.02  0.02  0.055]
     x_lim = int(limit[0] / voxel_size)
@@ -759,19 +760,6 @@ def predict(inputs, pos, net, sc_net, type, device, visual_dict=None, hunyun2_pa
     sc_time = 0
     hunyun2_path = hunyun2_path
     scene_name = scene_name
-
-    ## NEW TARGET_MESH_GT
-    target_mesh_watertight_path = os.path.join(hunyun2_path, scene_name, 'reconstruction', 'gt_targ_obj.ply')
-    if os.path.exists(target_mesh_watertight_path):
-        target_mesh_watertight = trimesh.load(target_mesh_watertight_path)
-        target_mesh_gt = target_mesh_watertight
-    else:
-        target_mesh_gt = target_mesh_gt
-    # target_mesh_gt.export('target_mesh_gt.obj')
-    # target_mesh_gt.export('target_mesh_gt.ply')
-    # # target_mesh_watertight.export('target_mesh_watertight.obj')
-    # target_mesh_watertight.export('target_mesh_watertight.ply')
-
 
     if type in ('giga', 'giga_aff', 'vgn', 'giga_hr'):
         assert sc_net == None

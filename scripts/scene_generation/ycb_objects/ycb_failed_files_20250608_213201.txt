@@ -1,0 +1,6 @@
+# Failed files for YCB dataset
+# Generated on: 2025-06-08 21:32:01
+# Total failed files: 1
+#==================================================
+
+307e835c80e0417f808b31e205283e62_c_1.npz

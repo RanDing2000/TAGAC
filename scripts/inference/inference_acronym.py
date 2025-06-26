@@ -146,6 +146,8 @@ def main(args):
         test_root=args.test_root,
         occ_level_dict_path=args.occ_level_dict,
         hunyun2_path=args.hunyun2_path,
+        hunyuan3D_ptv3=args.hunyuan3D_ptv3,
+        hunyuan3D_path=args.hunyuan3D_path,
         model_type=args.type,
         video_recording=args.video_recording,
         target_file_path=args.target_file,
@@ -173,7 +175,7 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--type", default="targo_hunyun2",
+    parser.add_argument("--type", default="targo",
                         choices=["giga", "vgn", "targo", "targo_full_targ", "targo_hunyun2", "targo_ptv3", "ptv3_scene", 
                                 "FGC-GraspNet", "AnyGrasp"],
                         help="Network to be used: vgn | giga_hr | giga_aff | giga | targo | targo_full_targ | targo_hunyun2 | targo_ptv3 | ptv3_scene | FGC-GraspNet | AnyGrasp")
@@ -213,6 +215,10 @@ if __name__ == "__main__":
                         help="Whether to record videos of grasping attempts.")
     parser.add_argument("--target-file", type=str, default='/usr/stud/dira/GraspInClutter/targo/example_targets/acronym_target_list.txt',
                         help="Path to a .txt file containing target names to record. If provided, only videos of these targets will be recorded.")
+    parser.add_argument("--hunyuan3D_ptv3", type=str2bool, default=False,
+                        help="Whether to use hunyuan3D_ptv3.")
+    parser.add_argument("--hunyuan3D_path", type=str, default=None,
+                        help="Path to hunyuan3D_path.")
     
     args = parser.parse_args()
     

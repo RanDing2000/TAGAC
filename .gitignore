@@ -15,6 +15,8 @@ data_scenes/
 demo/
 *.png
 visualization/
+data_check_results/
+train_logs/
 *.pdf
 *.pyc
 *.pyo

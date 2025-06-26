@@ -120,6 +120,8 @@ def run(
     occ_level_dict_path=None,
     model_type=None,
     hunyun2_path=None,
+    hunyuan3D_ptv3=False,
+    hunyuan3D_path=None,
     video_recording=True,
     target_file_path=None,  
     data_type='ycb',
@@ -312,7 +314,7 @@ def run(
                     extrinsic=extrinsic
             )
             
-        elif model_type == 'targo' or model_type == 'targo_full_targ' or model_type == 'targo_hunyun2' or model_type == 'targo_ptv3' or model_type == 'ptv3_scene':
+        elif model_type == 'targo' or model_type == 'targo_full_targ' or model_type == 'targo_hunyun2' or model_type == 'targo_ptv3':
             tsdf, timings["integration"], scene_no_targ_pc, targ_pc, targ_grid, occ_level = \
             sim.acquire_single_tsdf_target_grid(
                 path_to_npz,
@@ -322,13 +324,37 @@ def run(
                 curr_mesh_pose_list=scene_name,
             )
             state = argparse.Namespace(
+                        tsdf=tsdf,
+                        scene_no_targ_pc=scene_no_targ_pc,
+                        targ_grid=targ_grid,
+                        targ_pc=targ_pc,
+                        occ_level=occ_level,
+                        type=model_type
+                    )
+            
+        elif model_type == 'ptv3_scene':
+            tsdf, timings["integration"], scene_no_targ_pc, complete_targ_pc, complete_targ_tsdf, targ_grid, occ_level, iou_value, cd_value = \
+            sim.acquire_single_tsdf_target_grid_ptv3_scene(
+                path_to_npz,
+                tgt_id,
+                40,
+                model_type,  
+                curr_mesh_pose_list=scene_name,
+                hunyuan3D_ptv3=hunyuan3D_ptv3,
+                hunyuan3D_path=hunyuan3D_path,
+            )
+            state = argparse.Namespace(
                     tsdf=tsdf,
                     scene_no_targ_pc=scene_no_targ_pc,
+                    complete_targ_pc=complete_targ_pc,
+                    complete_targ_tsdf=complete_targ_tsdf,
                     targ_grid=targ_grid,
-                    targ_pc=targ_pc,
                     occ_level=occ_level,
-                    type=model_type
+                    type=model_type,
+                    iou=iou_value,
+                    cd=cd_value
                 )
+            
         elif model_type in ("vgn", "giga_aff", "giga", "giga_hr"):
             tsdf, timings["integration"], scene_grid, targ_grid, targ_mask, occ_level = \
             sim.acquire_single_tsdf_target_grid(
@@ -729,28 +755,37 @@ def run(
         json.dump(targ_name_label, f)
         
     # Save metrics to meta_evaluations.txt
-    with open(f'{result_path}/meta_evaluations.txt', 'w') as f:
-        f.write("Scene_ID, Target_Name, Occlusion_Level, IoU, CD, Success\n")
-        avg_cd = 0.0
-        avg_iou = 0.0
+    if not os.path.exists(f'{result_path}/meta_evaluations.txt'):
+        avg_cd = -1
+        avg_iou = -1
         total_scenes = len(scene_metrics)
         success_count = 0
         
         for scene_name, metrics in scene_metrics.items():
             target_name = metrics["target_name"]
-            occ_level = metrics["occlusion_level"]
-            iou = metrics["iou"]
-            cd = metrics["cd"]
-            success = metrics.get("success", 0)  # Default to 0 if "success" key doesn't exist
+    else:
+        with open(f'{result_path}/meta_evaluations.txt', 'w') as f:
+            f.write("Scene_ID, Target_Name, Occlusion_Level, IoU, CD, Success\n")
+            avg_cd = 0.0
+            avg_iou = 0.0
+            total_scenes = len(scene_metrics)
+            success_count = 0
             
-            f.write(f"{scene_name}, {target_name}, {occ_level:.4f}, {iou:.6f}, {cd:.6f}, {success}\n")
-            avg_cd += cd
-            avg_iou += iou
+            for scene_name, metrics in scene_metrics.items():
+                target_name = metrics["target_name"]
+                occ_level = metrics["occlusion_level"]
+                iou = metrics["iou"]
+                cd = metrics["cd"]
+                success = metrics.get("success", 0)  # Default to 0 if "success" key doesn't exist
+                
+                f.write(f"{scene_name}, {target_name}, {occ_level:.4f}, {iou:.6f}, {cd:.6f}, {success}\n")
+                avg_cd += cd
+                avg_iou += iou
+                
+                # Count successful grasps
+                if success == 1:
+                    success_count += 1
             
-            # Count successful grasps
-            if success == 1:
-                success_count += 1
-        
         if total_scenes > 0:
             avg_cd /= total_scenes
             avg_iou /= total_scenes

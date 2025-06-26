@@ -42,7 +42,8 @@ def transform_pc(pc):
     return points_curr_transformed['input']
 
 # Global error log file for recording problematic scene_ids
-ERROR_LOG_FILE = Path("/usr/stud/dira/GraspInClutter/targo/dataset_error_scenes.txt")
+ERROR_LOG_FILE_TARGO_FULL = Path("/usr/stud/dira/GraspInClutter/targo/data_check_results/full_train/dataset_error_scenes_targo_full.txt")
+ERROR_LOG_FILE_PTV3_SCENE = Path("/usr/stud/dira/GraspInClutter/targo/data_check_results/full_train/dataset_error_scenes_ptv3_scene.txt")
 
 def safe_specify_num_points(points, target_size, scene_id, point_type="unknown"):
     """
@@ -69,8 +70,8 @@ def safe_specify_num_points(points, target_size, scene_id, point_type="unknown")
         
     except Exception as e:
         # Log error to file
-        ERROR_LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
-        with ERROR_LOG_FILE.open("a", encoding="utf-8") as f:
+        ERROR_LOG_FILE_TARGO_FULL.parent.mkdir(parents=True, exist_ok=True)
+        with ERROR_LOG_FILE_TARGO_FULL.open("a", encoding="utf-8") as f:
             f.write(f"{scene_id},{point_type},\"{str(e)}\"\n")
         
         print(f"[ERROR] Scene {scene_id}: {point_type} point cloud error - {e}")
@@ -106,6 +107,11 @@ class DatasetVoxel_Target(torch.utils.data.Dataset):
         if ablation_dataset == '1_100000':
             self.df = self.df.sample(frac=0.00001)
             self.df = self.df.reset_index(drop=True)
+        
+        skip_scene_ids = ['b960209b0cbd406d98dac25aeccd3c71_s_2','5522fdbe62d9450687a195cfd2bbbac3_c_1', 'b960209b0cbd406d98dac25aeccd3c71_c_2']
+        self.df = self.df[~self.df['scene_id'].isin(skip_scene_ids)]
+        # self.df = self.df[~self.df.scene_id.isin(skip_scene_ids)]
+        self.df = self.df.reset_index(drop=True)
 
 
         print("data frames stastics")
@@ -139,8 +145,8 @@ class DatasetVoxel_Target(torch.utils.data.Dataset):
                 return self._get_item_safe(i, scene_id)
             except Exception as e:
                 # Log the error
-                ERROR_LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
-                with ERROR_LOG_FILE.open("a", encoding="utf-8") as f:
+                ERROR_LOG_FILE_TARGO_FULL.parent.mkdir(parents=True, exist_ok=True)
+                with ERROR_LOG_FILE_TARGO_FULL.open("a", encoding="utf-8") as f:
                     f.write(f"{scene_id},dataset_loading,\"attempt_{attempt+1}: {str(e)}\"\n")
                 
                 print(f"[WARNING] Scene {scene_id} loading failed (attempt {attempt+1}/{max_retries}): {e}")
@@ -192,6 +198,7 @@ class DatasetVoxel_Target(torch.utils.data.Dataset):
                     if '_c_' in scene_id:
                         targ_pc = read_targ_depth_pc(self.raw_root, scene_id).astype(np.float32)
                         scene_no_targ_pc = read_scene_no_targ_pc(self.raw_root, scene_id).astype(np.float32)
+                        # scene_no_targ_pc = np.concatenate((scene_no_targ_pc, np.load('/usr/stud/dira/GraspInClutter/grasping/setup/plane_sampled.npy')), axis=0)
                         targ_pc = points_within_boundary(targ_pc)
                         
                         # Safe point cloud processing
@@ -200,6 +207,7 @@ class DatasetVoxel_Target(torch.utils.data.Dataset):
                             raise ValueError(f"Failed to process target point cloud for scene {scene_id}")
                         
                         scene_no_targ_pc = points_within_boundary(scene_no_targ_pc)
+                        scene_no_targ_pc = np.concatenate((scene_no_targ_pc, np.load('/usr/stud/dira/GraspInClutter/grasping/setup/plane_sampled.npy')), axis=0)
                         scene_no_targ_pc = safe_specify_num_points(scene_no_targ_pc, 2048, scene_id, "scene_no_target")
                         if scene_no_targ_pc is None:
                             raise ValueError(f"Failed to process scene_no_target point cloud for scene {scene_id}")
@@ -342,12 +350,12 @@ class DatasetVoxel_Target(torch.utils.data.Dataset):
             targ_pc_tensor = torch.from_numpy(targ_pc).unsqueeze(0).float()
             scene_pc_tensor = torch.from_numpy(scene_pc).unsqueeze(0).float()
             
-            if self.model_type == "targo_full_targ" or self.model_type == "targo":
-                targ_pc_filtered = filter_and_pad_point_clouds(targ_pc_tensor)
-                scene_pc_filtered = filter_and_pad_point_clouds(scene_pc_tensor)
+            # if self.model_type == "targo_full_targ" or self.model_type == "targo":
+            #     targ_pc_filtered = filter_and_pad_point_clouds(targ_pc_tensor)
+            #     scene_pc_filtered = filter_and_pad_point_clouds(scene_pc_tensor)
             
-            targ_pc = targ_pc_filtered.squeeze(0).numpy()
-            scene_pc = scene_pc_filtered.squeeze(0).numpy()
+            targ_pc = targ_pc_tensor.squeeze(0).numpy()
+            scene_pc = scene_pc_tensor.squeeze(0).numpy()
 
             if self.model_type != "ptv3_scene":
                 x = (voxel_grid[0], targ_grid[0], targ_pc, scene_pc)
@@ -411,7 +419,7 @@ class DatasetVoxel_PTV3_Scene(torch.utils.data.Dataset):
         print_and_count_patterns(self.df,False)
 
         ## filter dirty data
-        skip_scene_ids = ['b960209b0cbd406d98dac25aeccd3c71_s_2']
+        skip_scene_ids = ['b960209b0cbd406d98dac25aeccd3c71_s_2','5522fdbe62d9450687a195cfd2bbbac3_c_1', 'b960209b0cbd406d98dac25aeccd3c71_c_2']
         self.df = self.df[~self.df['scene_id'].isin(skip_scene_ids)]
         # self.df = self.df[~self.df.scene_id.isin(skip_scene_ids)]
         self.df = self.df.reset_index(drop=True)
@@ -438,8 +446,8 @@ class DatasetVoxel_PTV3_Scene(torch.utils.data.Dataset):
                 return self._get_item_safe_ptv3(i, scene_id)
             except Exception as e:
                 # Log the error
-                ERROR_LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
-                with ERROR_LOG_FILE.open("a", encoding="utf-8") as f:
+                ERROR_LOG_FILE_PTV3_SCENE.parent.mkdir(parents=True, exist_ok=True)
+                with ERROR_LOG_FILE_PTV3_SCENE.open("a", encoding="utf-8") as f:
                     f.write(f"{scene_id},ptv3_dataset_loading,\"attempt_{attempt+1}: {str(e)}\"\n")
                 
                 print(f"[WARNING] PTV3 Scene {scene_id} loading failed (attempt {attempt+1}/{max_retries}): {e}")
@@ -463,9 +471,40 @@ class DatasetVoxel_PTV3_Scene(torch.utils.data.Dataset):
         voxel_grid, targ_grid = read_voxel_and_mask_occluder(self.raw_root, scene_id)
         occluder_grid = voxel_grid - targ_grid
         targ_pc = read_complete_target_pc(self.raw_root, scene_id).astype(np.float32)
+        scene_path = self.raw_root / "scenes" / f"{scene_id}.npz"
+        
+        # Handle missing complete_target_tsdf with error logging and fallback
         scene_single_path = self.raw_root / "scenes" / f"{single_scene_id}.npz"
-        with np.load(scene_single_path, allow_pickle=True) as data_single:
-            targ_grid = data_single["complete_target_tsdf"]
+        try:
+            # with np.load(scene_single_path, allow_pickle=True) as data_single:
+                # targ_grid = data_single["complete_target_tsdf"]
+            with np.load(scene_path) as data:
+                targ_grid = data["complete_target_tsdf"]
+                if targ_grid.ndim == 3:
+                    targ_grid = np.expand_dims(targ_grid, axis=0)
+        except KeyError as e:
+            # Log the error to file
+            ERROR_LOG_FILE_PTV3_SCENE.parent.mkdir(parents=True, exist_ok=True)
+            with ERROR_LOG_FILE_PTV3_SCENE.open("a", encoding="utf-8") as f:
+                f.write(f"{scene_id},complete_target_tsdf_missing,\"KeyError: 'complete_target_tsdf' not found in {single_scene_id}.npz\"\n")
+            
+            print(f"[WARNING] Scene {scene_id}: complete_target_tsdf missing in {single_scene_id}.npz, using fallback strategy")
+            
+            # Fallback: use original targ_grid from read_voxel_and_mask_occluder
+            # This maintains training continuity but may have lower quality complete target data
+            pass  # targ_grid already set from read_voxel_and_mask_occluder above
+            
+        except Exception as e:
+            # Log other errors
+            ERROR_LOG_FILE_PTV3_SCENE.parent.mkdir(parents=True, exist_ok=True)
+            with ERROR_LOG_FILE_PTV3_SCENE.open("a", encoding="utf-8") as f:
+                f.write(f"{scene_id},scene_file_error,\"Error loading {single_scene_id}.npz: {str(e)}\"\n")
+            
+            print(f"[WARNING] Scene {scene_id}: Error loading {single_scene_id}.npz: {e}, using fallback strategy")
+            
+            # Fallback: use original targ_grid
+            pass  # targ_grid already set from read_voxel_and_mask_occluder above
+        
         voxel_grid = occluder_grid + targ_grid
 
         plane = np.load('/usr/stud/dira/GraspInClutter/grasping/setup/plane_sampled.npy')

@@ -1,14 +1,4 @@
-#!/usr/bin/env python3
-"""
-Training script for TARGO Full - uses complete target point clouds without shape completion.
-
-This script trains an original TARGO model using preprocessed complete target point clouds
-instead of using AdaPoinTr for shape completion. The network structure is the original TARGO
-but uses complete target meshes as ground truth.
-"""
-
 import argparse
-import time  # Add time import at the beginning
 from pathlib import Path
 import numpy as np
 np.int = int
@@ -22,35 +12,46 @@ from ignite.metrics import Average, Accuracy, Precision, Recall
 import torch
 import open3d as o3d
 import time
+import os  # 添加os导入以支持环境变量设置
 from torch.utils import tensorboard
 import torch.nn.functional as F
-from vgn.dataset_voxel import DatasetVoxel_Target
+from vgn.dataset_voxel import DatasetVoxel_Target, DatasetVoxel_PTV3_Scene
 from vgn.networks import get_network, load_network
+from shape_completion.models.AdaPoinTr import AdaPoinTr
 from vgn.utils.transform import Transform
 from vgn.perception import TSDFVolume
 from utils_giga import visualize_and_save_tsdf, save_point_cloud_as_ply, tsdf_to_ply, points_to_voxel_grid_batch, pointcloud_to_voxel_indices
 from utils_giga import filter_and_pad_point_clouds
 import numpy as np
+from shape_completion.config import cfg_from_yaml_file
+from shape_completion import builder
+from shape_completion.data_transforms import Compose
 from vgn.utils.transform import Rotation, Transform
-from src.vgn.io import read_complete_target_pc, check_complete_target_available
-import os  # 添加os导入以支持环境变量设置
-import sys
+from src.vgn.detection_implicit import VGNImplicit
+from src.vgn.experiments import target_sample_offline_ycb, target_sample_offline_acronym
+import matplotlib.pyplot as plt
+from PIL import Image
 
 # Import wandb
 try:
     import wandb
     WANDB_AVAILABLE = True
-    print("✓ wandb available")
 except ImportError:
     WANDB_AVAILABLE = False
-    print("✗ wandb not available - continuing without experiment tracking")
-
-# Add validation evaluation modules path
-sys.path.append('/usr/stud/dira/GraspInClutter/targo/scripts')
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print("Warning: wandb not available. Install with 'pip install wandb' for experiment tracking.")
 
 LOSS_KEYS = ['loss_all', 'loss_qual', 'loss_rot', 'loss_width']
+
+transform = Compose([{
+        'callback': 'UpSamplePoints',
+        'parameters': {
+            'n_points': 2048
+        },
+        'objects': ['input']
+    }, {
+        'callback': 'ToTensor',
+        'objects': ['input']
+    }])
 
 def str2bool(v):
     if isinstance(v, bool):
@@ -62,17 +63,117 @@ def str2bool(v):
     else:
         raise argparse.ArgumentTypeError('Boolean value expected.')
 
+def visualize_input_data(combined_points, epoch, step, model_type, vis_dir, use_wandb=False):
+    """
+    Simplified visualization function - only saves PLY files locally.
+    
+    Args:
+        combined_points: Combined point cloud tensor [B, N, 4] where last column is label (1=target, 0=occluder)
+        epoch: Current training epoch
+        step: Current training step 
+        model_type: Model type (targo_ptv3, ptv3_scene)
+        vis_dir: Directory to save PLY files
+        use_wandb: Whether to log to wandb (ignored, kept for compatibility)
+    """
+    if combined_points is None:
+        return
+        
+    # Ensure directory exists
+    vis_dir = Path(vis_dir)
+    vis_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Convert tensors to numpy for visualization (use first batch element)
+    if isinstance(combined_points, torch.Tensor):
+        combined_np = combined_points[0].detach().cpu().numpy()
+    else:
+        combined_np = np.array(combined_points[0])
+    
+    # Split coordinates and labels
+    coords = combined_np[:, :3]  # Position coordinates
+    labels = combined_np[:, -1]  # Labels (1=target, 0=occluder)
+    
+    # Separate target and occluder points based on labels
+    target_mask = labels == 1.0
+    occluder_mask = labels == 0.0
+    
+    target_coords = coords[target_mask]
+    occluder_coords = coords[occluder_mask]
+    
+    # Print basic statistics
+    print(f"[VIS] Epoch {epoch}, Step {step} - PLY Save:")
+    print(f"[VIS] Total points: {coords.shape[0]}")
+    print(f"[VIS] Target points: {target_coords.shape[0]} ({target_coords.shape[0]/coords.shape[0]*100:.1f}%)")
+    print(f"[VIS] Occluder points: {occluder_coords.shape[0]} ({occluder_coords.shape[0]/coords.shape[0]*100:.1f}%)")
+    
+    # Save PLY files
+    try:
+        # Occluder points (gray)
+        if len(occluder_coords) > 0:
+            occluder_pcd = o3d.geometry.PointCloud()
+            occluder_pcd.points = o3d.utility.Vector3dVector(occluder_coords)
+            occluder_pcd.paint_uniform_color([0.7, 0.7, 0.7])  # Gray for occluders
+            occluder_ply_path = vis_dir / f"occluder_epoch{epoch}_step{step}.ply"
+            o3d.io.write_point_cloud(str(occluder_ply_path), occluder_pcd)
+            print(f"[VIS] Saved occluder points: {occluder_ply_path}")
+        
+        # Target points (red)
+        if len(target_coords) > 0:
+            target_pcd = o3d.geometry.PointCloud()
+            target_pcd.points = o3d.utility.Vector3dVector(target_coords)
+            target_pcd.paint_uniform_color([1.0, 0.3, 0.3])  # Red for targets
+            target_ply_path = vis_dir / f"target_epoch{epoch}_step{step}.ply"
+            o3d.io.write_point_cloud(str(target_ply_path), target_pcd)
+            print(f"[VIS] Saved target points: {target_ply_path}")
+        
+        # Combined point cloud
+        if len(occluder_coords) > 0 and len(target_coords) > 0:
+            combined_pcd = o3d.geometry.PointCloud()
+            # Combine points with colors
+            all_coords = np.vstack([occluder_coords, target_coords])
+            all_colors = np.vstack([
+                np.tile([0.7, 0.7, 0.7], (len(occluder_coords), 1)),  # Gray for occluders
+                np.tile([1.0, 0.3, 0.3], (len(target_coords), 1))     # Red for targets
+            ])
+            combined_pcd.points = o3d.utility.Vector3dVector(all_coords)
+            combined_pcd.colors = o3d.utility.Vector3dVector(all_colors)
+            combined_ply_path = vis_dir / f"combined_epoch{epoch}_step{step}.ply"
+            o3d.io.write_point_cloud(str(combined_ply_path), combined_pcd)
+            print(f"[VIS] Saved combined points: {combined_ply_path}")
+        elif len(occluder_coords) > 0:
+            # Only occluders
+            occluder_pcd = o3d.geometry.PointCloud()
+            occluder_pcd.points = o3d.utility.Vector3dVector(occluder_coords)
+            occluder_pcd.paint_uniform_color([0.7, 0.7, 0.7])
+            combined_ply_path = vis_dir / f"combined_epoch{epoch}_step{step}.ply"
+            o3d.io.write_point_cloud(str(combined_ply_path), occluder_pcd)
+            print(f"[VIS] Saved occluder-only combined: {combined_ply_path}")
+        elif len(target_coords) > 0:
+            # Only targets
+            target_pcd = o3d.geometry.PointCloud()
+            target_pcd.points = o3d.utility.Vector3dVector(target_coords)
+            target_pcd.paint_uniform_color([1.0, 0.3, 0.3])
+            combined_ply_path = vis_dir / f"combined_epoch{epoch}_step{step}.ply"
+            o3d.io.write_point_cloud(str(combined_ply_path), target_pcd)
+            print(f"[VIS] Saved target-only combined: {combined_ply_path}")
+            
+    except Exception as e:
+        print(f"[VIS] Error saving PLY files: {e}")
+        import traceback
+        traceback.print_exc()
+    
+    print(f"[VIS] PLY files saved to {vis_dir}")
+
 def main(args):
     use_cuda = torch.cuda.is_available()
     device = torch.device("cuda" if use_cuda else "cpu")
-    
-    # 自适应调整数据加载工作进程数，减少网络资源竞争
-    if args.ablation_dataset == '1_100000':
-        num_workers = 1  # 极小数据集，最小工作进程
-    elif args.ablation_dataset == '1_100':
-        num_workers = 2  # 小数据集，减少工作进程
-    else:
-        num_workers = 4  # 其他情况，适度保守
+    # 更激进地减少数据加载工作进程数，特别是对于大数据集
+    # 对于1_100数据集，即使是4个worker也可能造成网络竞争
+    # if args.ablation_dataset == '1_100000':
+    #     num_workers = 1  # 极小数据集，最小工作进程
+    # elif args.ablation_dataset == '1_100':
+    #     num_workers = 2  # 小数据集，减少工作进程
+    # else:
+    num_workers = 4  # 其他情况
     
     kwargs = {"num_workers": num_workers, "pin_memory": True} if use_cuda else {}
     print(f"[INFO] Using {num_workers} data loading workers for ablation_dataset={args.ablation_dataset}")
@@ -108,11 +209,16 @@ def main(args):
                     "description": args.description,
                     "data_contain": args.data_contain,
                     "input_points": args.input_points,
-                    "ablation_dataset": args.ablation_dataset,
+                    "ablation_dataset": args.ablation_dataset,  # 添加这个关键参数
                     "num_workers": num_workers,  # 记录实际使用的worker数
                     "wandb_offline": args.wandb_offline,  # 记录是否使用离线模式
+                    # Visualization parameters
+                    "enable_input_vis": args.enable_input_vis,
+                    "vis_freq": args.vis_freq,
+                    "vis_dir": args.vis_dir,
+                    "vis_wandb": args.vis_wandb,
                 },
-                tags=["targo", "original", "complete_target" if args.use_complete_targ else "regular"],
+                tags=["targo", "ptv3", "shape_completion" if args.shape_completion else "no_shape_completion"],
                 settings=wandb.Settings(
                     _disable_stats=True,
                     _disable_meta=True,
@@ -167,7 +273,7 @@ def main(args):
                             "wandb_offline": True,  # 强制离线模式
                             "fallback_mode": True,  # 标记这是fallback模式
                         },
-                        tags=["targo", "original", "offline_fallback"],
+                        tags=["targo", "ptv3", "offline_fallback"],
                         settings=wandb.Settings(
                             _disable_stats=True,
                             _disable_meta=True,
@@ -212,6 +318,12 @@ def main(args):
         net = get_network(args.net).to(device)
     else:
         net = load_network(args.load_path, device, args.net)
+    
+    if args.shape_completion:
+        sc_cfg = cfg_from_yaml_file(args.sc_model_config)
+        sc_net = AdaPoinTr(sc_cfg.model)
+        builder.load_model(sc_net, args.sc_model_checkpoint)
+        sc_net = sc_net.to(device)
 
     # define optimizer and metrics
     optimizer = torch.optim.Adam(net.parameters(), lr=args.lr)
@@ -228,8 +340,10 @@ def main(args):
         metrics[k] = Average(lambda out, sk=k: out[3][sk])
 
     # create ignite engines for training and validation
-    trainer = create_trainer(net, optimizer, loss_fn, metrics, device, args.input_points, args.net)
-    evaluator = create_evaluator(net, loss_fn, metrics, device, args.input_points, args.net)
+    if not args.shape_completion:
+        sc_net = None
+    trainer = create_trainer(net, sc_net, optimizer, loss_fn, metrics, device, args.input_points, args.net, args.use_complete_targ, args)
+    evaluator = create_evaluator(net, sc_net, loss_fn, metrics, device, args.input_points, args.net, args.use_complete_targ)
     
     # Set wandb configuration in trainer
     trainer.use_wandb = WANDB_AVAILABLE and args.use_wandb
@@ -294,6 +408,9 @@ def main(args):
 
     @trainer.on(Events.EPOCH_COMPLETED)
     def log_validation_results(engine):
+        # Import time module to fix UnboundLocalError
+        import time
+        
         # Perform real grasp evaluation on validation set
         print(f"[DEBUG] log_validation_results called for epoch {engine.state.epoch}")
         print("Starting validation grasp evaluation...")
@@ -304,7 +421,7 @@ def main(args):
         
         # Try actual validation
         try:
-            ycb_success_rate, acronym_success_rate, avg_success_rate = perform_validation_grasp_evaluation(net, device, logdir, engine.state.epoch)
+            ycb_success_rate, acronym_success_rate, avg_success_rate = perform_validation_grasp_evaluation(net, sc_net, device, logdir, engine.state.epoch)
             print(f"[DEBUG] Validation returned: YCB={ycb_success_rate:.4f}, ACRONYM={acronym_success_rate:.4f}, AVG={avg_success_rate:.4f}")
         except Exception as e:
             print(f"[WARNING] Validation function failed completely: {e}")
@@ -334,6 +451,29 @@ def main(args):
             
             print(f"[WARNING] Using synthetic validation rates - YCB: {ycb_success_rate:.4f}, ACRONYM: {acronym_success_rate:.4f} (disabled), AVG: {avg_success_rate:.4f}")
             print(f"[DEBUG] Based on: epoch_factor={epoch_factor:.3f}, accuracy_factor={accuracy_factor:.3f}, loss_factor={loss_factor:.3f}")
+        
+        # Record validation success rates to val_srt.txt file
+        try:
+            val_srt_file = logdir / "val_srt.txt"
+            
+            # Create header if file doesn't exist
+            if not val_srt_file.exists():
+                with open(val_srt_file, 'w') as f:
+                    f.write("Epoch,YCB_Success_Rate,ACRONYM_Success_Rate,Average_Success_Rate,Timestamp\n")
+                print(f"[INFO] Created validation success rate log file: {val_srt_file}")
+            
+            # Append current validation results
+            timestamp = time.strftime("%Y-%m-%d_%H:%M:%S")
+            with open(val_srt_file, 'a') as f:
+                f.write(f"{engine.state.epoch},{ycb_success_rate:.6f},{acronym_success_rate:.6f},{avg_success_rate:.6f},{timestamp}\n")
+            
+            print(f"[INFO] Recorded validation results to {val_srt_file}")
+            print(f"[INFO] Epoch {engine.state.epoch}: YCB={ycb_success_rate:.4f}, ACRONYM={acronym_success_rate:.4f}, AVG={avg_success_rate:.4f}")
+            
+        except Exception as e:
+            print(f"[ERROR] Failed to record validation results to file: {e}")
+            import traceback
+            traceback.print_exc()
         
         # Store validation success rate in engine state for best model selection
         engine.state.val_success_rate = avg_success_rate
@@ -365,6 +505,7 @@ def main(args):
                 "validation/source": 1.0 if avg_success_rate > 0.1 else 0.0,
                 "validation/ycb_only": 1.0,
                 "validation/acronym_disabled": 1.0,
+    
                 "validation/upload_timestamp": time.time()
             }
             
@@ -390,6 +531,7 @@ def main(args):
                     print(f"[ERROR] ❌ Attempt {attempt + 1} failed: {e}")
                     if attempt < max_attempts - 1:
                         print(f"[INFO] 🔄 Retrying in 2 seconds...")
+                        import time
                         time.sleep(2)
                     else:
                         print(f"[ERROR] 💥 All {max_attempts} attempts failed!")
@@ -441,8 +583,7 @@ def main(args):
     trainer.add_event_handler(
         Events.EPOCH_COMPLETED(every=1), checkpoint_handler, {args.net: net}
     )
-    
-    trainer.add_event_handler(
+    evaluator.add_event_handler(
         Events.EPOCH_COMPLETED, best_checkpoint_handler, {args.net: net}
     )
 
@@ -452,23 +593,11 @@ def main(args):
     # Finish wandb run
     if WANDB_AVAILABLE and args.use_wandb:
         wandb.finish()
- 
+
 def create_train_val_loaders(root, root_raw, batch_size, val_split, augment, complete_shape, targ_grasp, set_theory, ablation_dataset, data_contain, decouple, use_complete_targ, model_type, input_points, shape_completion, vis_data, logdir, kwargs):
-    # Load the main training dataset
-    print(f"Loading training dataset from {root}")
-    print(f"Raw dataset path: {root_raw}")
-    print(f"Parameters: model_type={model_type}, data_contain={data_contain}, shape_completion={shape_completion}")
-    
-    try:
-        dataset = DatasetVoxel_Target(root, root_raw, augment=augment, ablation_dataset=ablation_dataset, model_type=model_type,
-                                     data_contain=data_contain, decouple=decouple, use_complete_targ=use_complete_targ, 
-                                     input_points=input_points, shape_completion=shape_completion, vis_data=vis_data, logdir=logdir)
-        print(f"Training dataset loaded successfully with {len(dataset)} samples")
-    except Exception as e:
-        print(f"Error loading training dataset: {e}")
-        import traceback
-        traceback.print_exc()
-        raise
+    # Load the dataset
+    dataset = DatasetVoxel_PTV3_Scene(root, root_raw, augment=augment, ablation_dataset=ablation_dataset, model_type=model_type, 
+                                     use_complete_targ=use_complete_targ, debug=True, logdir=Path('/usr/stud/dira/GraspInClutter/targo/visualization'))
     
     scene_ids = dataset.df['scene_id'].tolist()
 
@@ -482,39 +611,22 @@ def create_train_val_loaders(root, root_raw, batch_size, val_split, augment, com
     related_single_double_ids = {id.replace('_c_', '_s_') for id in val_clutter_ids_set} | \
                                 {id.replace('_c_', '_d_') for id in val_clutter_ids_set}
 
-    # Create train indices (exclude validation scenes)
+    # Create train and validation indices
+    val_indices = [i for i, id in enumerate(scene_ids) if id in val_clutter_ids_set]
     train_indices = [i for i, id in enumerate(scene_ids) if id not in val_clutter_ids_set and id not in related_single_double_ids]
 
-    # Create training subset
+    # Create subsets for training and validation
     train_subset = Subset(dataset, train_indices)
-    print(f"Training subset created with {len(train_subset)} samples")
+    val_subset = Subset(dataset, val_indices)
     
-    # For validation, we don't need a data loader since we'll use the inference pipeline
-    # Create a dummy validation loader for compatibility
-    from torch.utils.data import TensorDataset
-    dummy_tensor = torch.zeros((1, 1))
-    dummy_dataset = TensorDataset(dummy_tensor)
-    val_loader = DataLoader(dummy_dataset, batch_size=1, shuffle=False)
-    
-    # Reduce num_workers to avoid multiprocessing issues
-    safe_kwargs = kwargs.copy()
-    safe_kwargs["num_workers"] = min(4, kwargs.get("num_workers", 8))  # Reduce workers
-    print(f"Using {safe_kwargs['num_workers']} workers for data loading")
-    
-    # Create training data loader
-    try:
-        train_loader = DataLoader(train_subset, batch_size=batch_size, shuffle=True, drop_last=True, **safe_kwargs)
-        print("Training loader created successfully")
-    except Exception as e:
-        print(f"Error creating training loader: {e}")
-        import traceback
-        traceback.print_exc()
-        raise
+    # Create data loaders
+    train_loader = DataLoader(train_subset, batch_size=batch_size, shuffle=True, drop_last=True, **kwargs)
+    val_loader = DataLoader(val_subset, batch_size=batch_size, shuffle=False, drop_last=True, **kwargs)
     
     return train_loader, val_loader
 
-def prepare_batch(batch, device, model_type="targo"):
-    """Prepare batch data for TARGO Full model."""
+def prepare_batch(batch, device, model_type="targo_ptv3"):
+    """Prepare batch data for different model types."""
     (pc, targ_grid, targ_pc, scene_pc), (label, rotations, width), pos = batch
 
     # Convert to device and proper types
@@ -528,8 +640,14 @@ def prepare_batch(batch, device, model_type="targo"):
     pos.unsqueeze_(1)  # B, 1, 3
     pos = pos.float().to(device)
 
-    # For TARGO Full, return scene and complete target point clouds
-    return (scene_pc, targ_pc), (label, rotations, width), pos
+    if model_type == "ptv3_scene":
+        # For ptv3_scene, scene_pc is the combined point cloud with labels [B, N, 4]
+        # where last column is binary labels (1=target, 0=occluder)
+        # This is exactly what the ptv3_scene model expects
+        return scene_pc, (label, rotations, width), pos
+    else:
+        # For targo_ptv3, return scene and target point clouds
+        return (scene_pc, targ_pc), (label, rotations, width), pos
 
 def select(out):
     """Select outputs from model predictions."""
@@ -538,7 +656,7 @@ def select(out):
     return qual_out.squeeze(-1), rot_out, width_out.squeeze(-1)
 
 def loss_fn(y_pred, y):
-    """Loss function for TARGO Full."""
+    """Loss function for targo_ptv3."""
     label_pred, rotation_pred, width_pred = y_pred
     label, rotations, width = y
     
@@ -570,12 +688,93 @@ def _quat_loss_fn(pred, target):
 def _width_loss_fn(pred, target):
     return F.mse_loss(40 * pred, 40 * target, reduction="none")
 
-def create_trainer(net, optimizer, loss_fn, metrics, device, input_points, model_type="targo"):
+def create_trainer(net, sc_net, optimizer, loss_fn, metrics, device, input_points, model_type="targo_ptv3", use_complete_targ=False, args=None):
     def _update(_, batch):
+        if sc_net is not None and not use_complete_targ:
+            sc_net.eval()
         net.train()
+
         optimizer.zero_grad()
-        
         x, y, pos = prepare_batch(batch, device, model_type)
+
+        # Only use shape completion if not using complete target data
+        if sc_net is not None and not use_complete_targ:
+            with torch.no_grad():
+                if model_type == "ptv3_scene":
+                    # For ptv3_scene, x is just scene_pc
+                    scene_points = x
+                    # Apply shape completion to scene points
+                    scene_points = sc_net(scene_points)[1].to(dtype=torch.float32)
+                    scene_points = filter_and_pad_point_clouds(scene_points)
+                    x = scene_points
+                else:
+                    # For targo_ptv3, x is (scene_pc, targ_pc)
+                    targ_points = x[1]
+                    targ_points = sc_net(targ_points)[1].to(dtype=torch.float32)
+                    targ_points = filter_and_pad_point_clouds(targ_points)
+                    scene_points = torch.cat((x[0], targ_points), dim=1)
+                    x = (scene_points, targ_points)
+
+        elif use_complete_targ:
+            # When using complete target data, the data loader already provides complete target point clouds
+            # No shape completion needed - directly use the complete target data from preprocessing
+            if model_type == "ptv3_scene":
+                # For ptv3_scene, x is already the complete scene point cloud
+                x = x
+            else:
+                # For targo_ptv3 and targo_full, x is (scene_pc, complete_targ_pc)
+                scene_points, targ_points = x
+                scene_points = filter_and_pad_point_clouds(scene_points.unsqueeze(0) if len(scene_points.shape) == 2 else scene_points, N=512)
+                targ_points = filter_and_pad_point_clouds(targ_points.unsqueeze(0) if len(targ_points.shape) == 2 else targ_points)
+                # Combine scene and complete target point clouds
+                combined_scene = torch.cat((scene_points, targ_points), dim=1)
+                x = (combined_scene, targ_points)
+                
+        # Enhanced visualization with periodic saving based on arguments
+        current_step = _.state.iteration if hasattr(_, 'state') and hasattr(_.state, 'iteration') else 0
+        current_epoch = _.state.epoch if hasattr(_, 'state') and hasattr(_.state, 'epoch') else 0
+        
+        # Determine if visualization should happen based on args
+        if args and args.enable_input_vis:
+            vis_freq = getattr(args, 'vis_freq', 100)
+            should_visualize = (
+                current_step % vis_freq == 0 or  # Every vis_freq steps
+                (current_epoch > 0 and current_step == 1) or  # First step of each epoch
+                current_step == 1  # Very first step
+            )
+            
+            if should_visualize:
+                # For visualization, we need the combined scene data (x)
+                if model_type == "ptv3_scene":
+                    # For ptv3_scene, x is the combined point cloud with labels [N, 4]
+                    combined_points = x
+                    print(f"[VIS] ptv3_scene - visualizing combined scene data: {combined_points.shape}")
+                else:
+                    # For targo_ptv3, x is (combined_scene, targ_points)
+                    # Use the combined_scene which contains both scene and target with labels
+                    combined_points = x[0] if isinstance(x, tuple) else x
+                    print(f"[VIS] targo_ptv3 - visualizing combined scene data: {combined_points.shape}")
+                
+                vis_base_dir = getattr(args, 'vis_dir', 'visualization')
+                vis_dir = Path(vis_base_dir) / "training_input" / f"epoch_{current_epoch}"
+                use_wandb_viz = (WANDB_AVAILABLE and 
+                                hasattr(_, 'use_wandb') and _.use_wandb and 
+                                getattr(args, 'vis_wandb', True))
+                
+                try:
+                    print(f"[INFO] Visualizing input data at epoch {current_epoch}, step {current_step}")
+                    print(f"[INFO] Model type: {model_type}, Input shape: {combined_points.shape}")
+                    visualize_input_data(
+                        combined_points, 
+                        current_epoch, current_step, 
+                        model_type, vis_dir, 
+                        use_wandb=use_wandb_viz
+                    )
+                except Exception as e:
+                    print(f"[WARNING] Visualization failed: {e}")
+                    import traceback
+                    traceback.print_exc()
+
         y_pred = select(net(x, pos))
         loss, loss_dict = loss_fn(y_pred, y)
 
@@ -611,16 +810,55 @@ def create_trainer(net, optimizer, loss_fn, metrics, device, input_points, model
 
     return trainer
 
-def create_evaluator(net, loss_fn, metrics, device, input_points, model_type="targo"):
+def create_evaluator(net, sc_net, loss_fn, metrics, device, input_points, model_type="targo_ptv3", use_complete_targ=False):
     def _inference(_, batch):
         net.eval()
         with torch.no_grad():
             x, y, pos = prepare_batch(batch, device, model_type)
-            y_pred = select(net(x, pos))
-            loss, loss_dict = loss_fn(y_pred, y)
-            return x, y_pred, y, loss_dict
+            
+        # Only use shape completion if not using complete target data
+        if sc_net is not None and not use_complete_targ:
+            sc_net.eval()
+            with torch.no_grad():
+                if model_type == "ptv3_scene":
+                    # For ptv3_scene, x is just scene_pc
+                    scene_points = x
+                    # Apply shape completion to scene points
+                    scene_points = sc_net(scene_points)[1].to(dtype=torch.float32)
+                    scene_points = filter_and_pad_point_clouds(scene_points)
+                    x = scene_points
+                else:
+                    # For targo_ptv3, x is (scene_pc, targ_pc)
+                    targ_points = x[1]
+                    targ_points = sc_net(targ_points)[1].to(dtype=torch.float32)
+                    targ_points = filter_and_pad_point_clouds(targ_points)
+                    scene_points = torch.cat((x[0], targ_points), dim=1)
+                    x = (scene_points, targ_points)
+        elif use_complete_targ:
+            # When using complete target data, the data loader already provides complete target point clouds
+            # No shape completion needed - directly use the complete target data from preprocessing
+            if model_type == "ptv3_scene":
+                # For ptv3_scene, x is already the complete scene point cloud
+                x = filter_and_pad_point_clouds(x.unsqueeze(0) if len(x.shape) == 2 else x).squeeze(0) if len(x.shape) == 3 else filter_and_pad_point_clouds(x)
+            else:
+                # For targo_ptv3 and targo_full, x is (scene_pc, complete_targ_pc)
+                scene_points, targ_points = x
+                # Apply filtering to both scene and target point clouds
+                scene_points = filter_and_pad_point_clouds(scene_points.unsqueeze(0) if len(scene_points.shape) == 2 else scene_points)
+                targ_points = filter_and_pad_point_clouds(targ_points.unsqueeze(0) if len(targ_points.shape) == 2 else targ_points)
+                # Combine scene and complete target point clouds
+                combined_scene = torch.cat((scene_points, targ_points), dim=1)
+                x = (combined_scene, targ_points)
+                
+        y_pred = select(net(x, pos))
+        loss, loss_dict = loss_fn(y_pred, y)
+        return x, y_pred, y, loss_dict
 
     evaluator = Engine(_inference)
+    
+    # Store wandb settings in evaluator state for consistency
+    evaluator.use_wandb = False  # Will be set properly when evaluator is created
+    evaluator.wandb_log_freq = 10  # Default frequency for evaluator
 
     for name, metric in metrics.items():
         metric.attach(evaluator, name)
@@ -638,7 +876,7 @@ def create_summary_writers(net, device, log_dir):
 
 def create_logdir(args):
     log_dir = Path(args.logdir) 
-    hp_str = f"net={args.net}_targo_full"
+    hp_str = f"net={args.net}_shape_completion={args.shape_completion}"
     time_stamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     log_dir = log_dir / f"{hp_str}/{time_stamp}"
     if not log_dir.exists():
@@ -646,51 +884,43 @@ def create_logdir(args):
     args.logdir = log_dir
     return True
 
-def perform_validation_grasp_evaluation(net, device, logdir, epoch):
+def perform_validation_grasp_evaluation(net, sc_net, device, logdir, epoch):
     """
     Perform real grasp evaluation on validation scenes like inference_ycb.py.
     Returns the YCB success rate, ACRONYM success rate, and average success rate.
     """
+    from src.vgn.detection_ptv3_implicit import PTV3SceneImplicit
     from src.vgn.experiments import target_sample_offline_ycb, target_sample_offline_acronym
     import tempfile
     import os
+    import time  # Add time import to fix UnboundLocalError
     
     print(f"[DEBUG] Starting validation evaluation for epoch {epoch}")
     
     # Save current model to temporary file
     temp_model_path = tempfile.mktemp(suffix='.pt')
     torch.save(net.state_dict(), temp_model_path)
+    temp_sc_path = tempfile.mktemp(suffix='.pt')
+    if sc_net is not None:
+        torch.save(sc_net.state_dict(), temp_sc_path)
     print(f"[DEBUG] Saved temporary model to: {temp_model_path}")
     
     try:
-        # Try to create grasp planner with current model (use targo_full_targ for complete target)
+        # Create grasp planner with current model
         print(f"[DEBUG] Creating VGNImplicit grasp planner...")
-        try:
-            from src.vgn.detection_implicit import VGNImplicit
-            grasp_planner = VGNImplicit(
-                temp_model_path,
-                'targo_full_targ',
-                best=True,
-                qual_th=0.9,
-                force_detection=True,
-                out_th=0.5,
-                select_top=False,
-                visualize=False,
-                cd_iou_measure=True,
-            )
-            print(f"[DEBUG] Grasp planner created successfully")
-        except Exception as e:
-            print(f"[ERROR] Failed to create grasp planner: {e}")
-            print("[WARNING] Falling back to synthetic validation rates...")
-            
-            # Return synthetic rates based on epoch progression
-            epoch_factor = min(epoch / 50.0, 1.0)
-            base_rate = 0.2 + 0.4 * epoch_factor  # Improve from 0.2 to 0.6 over 50 epochs
-            ycb_rate = base_rate + np.random.normal(0, 0.02)
-            acronym_rate = base_rate + 0.1 + np.random.normal(0, 0.02)
-            avg_rate = (ycb_rate + acronym_rate) / 2
-            
-            return max(0.1, ycb_rate), max(0.1, acronym_rate), max(0.1, avg_rate)
+        grasp_planner = PTV3SceneImplicit(
+            temp_model_path,
+            'ptv3_scene',
+            best=True,
+            qual_th=0.9,
+            force_detection=True,
+            out_th=0.5,
+            select_top=False,
+            visualize=False,
+            sc_model_path=temp_sc_path if sc_net is not None else None,
+            cd_iou_measure=True,
+        )
+        print(f"[DEBUG] Grasp planner created successfully")
         
         # Create temporary result directory
         temp_result_dir = tempfile.mkdtemp()
@@ -731,14 +961,15 @@ def perform_validation_grasp_evaluation(net, device, logdir, epoch):
                     add_noise=None,
                     sideview=True,
                     visualize=False,
-                    type='targo_full_targ',
+                    type='ptv3_scene',  # Use ptv3_scene instead of targo_ptv3
                     test_root=ycb_test_root,
                     occ_level_dict_path=f'{ycb_test_root}/test_set/occlusion_level_dict.json',
                     hunyun2_path=None,
-                    model_type='targo_full_targ',
+                    model_type='ptv3_scene',  # Use ptv3_scene instead of targo_ptv3
                     video_recording=False,
                     target_file_path=None,
-                    max_scenes=10,  # Limit to first 50 scenes for faster validation
+                    max_scenes=1000
+                    ,  # Limit to first 50 scenes for faster validation
                 )
                 print(f"[DEBUG] YCB validation completed. Result: {ycb_result}")
                 
@@ -776,15 +1007,15 @@ def perform_validation_grasp_evaluation(net, device, logdir, epoch):
                     add_noise=None,
                     sideview=True,
                     visualize=False,
-                    type='targo_full_targ',
+                    type='targo_ptv3',
                     test_root=acronym_test_root,
                     occ_level_dict_path=f'{acronym_test_root}/test_set/occlusion_level_dict.json',
                     hunyun2_path=None,
-                    model_type='targo_full_targ',
+                    model_type='targo_ptv3',
                     video_recording=False,
                     target_file_path=None,
                     data_type='acronym',
-                    max_scenes=10,  # Limit to first 10 scenes for faster validation
+                    max_scenes=50,  # Limit to first 50 scenes for faster validation
                 )
                 print(f"[DEBUG] ACRONYM validation completed. Result: {acronym_result}")
                 
@@ -797,16 +1028,10 @@ def perform_validation_grasp_evaluation(net, device, logdir, epoch):
                     
             except Exception as e:
                 print(f"[WARNING] ACRONYM validation failed: {e}")
-                # Check if it's a specific file corruption issue
-                if "File is not a zip file" in str(e) or "BadZipFile" in str(e):
-                    print("[INFO] ACRONYM dataset has corrupted files, skipping ACRONYM validation")
-                    print("[INFO] This is a known issue with some ACRONYM dataset files")
-                else:
-                    import traceback
-                    traceback.print_exc()
+                import traceback
+                traceback.print_exc()
         else:
             print(f"[WARNING] ACRONYM test root does not exist: {acronym_test_root}")
-            print("[INFO] Skipping ACRONYM validation due to missing dataset")
         """
         
         # Calculate average success rate (YCB only since ACRONYM is temporarily disabled)
@@ -843,20 +1068,23 @@ def perform_validation_grasp_evaluation(net, device, logdir, epoch):
         if os.path.exists(temp_model_path):
             os.remove(temp_model_path)
             print(f"[DEBUG] Cleaned up temporary model file: {temp_model_path}")
+        if sc_net is not None and os.path.exists(temp_sc_path):
+            os.remove(temp_sc_path)
+            print(f"[DEBUG] Cleaned up temporary SC model file: {temp_sc_path}")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Train TARGO with flexible target configuration")
-    parser.add_argument("--net", default="targo_full_targ", choices=["targo_full_targ"], 
-                        help="Network type: targo (original TARGO architecture)")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--net", default="ptv3_scene", choices=["targo_ptv3", "ptv3_scene"], 
+                        help="Network type: targo_ptv3 (scene+target) or ptv3_scene (scene only)")
     parser.add_argument("--dataset", type=Path, default='/storage/user/dira/nips_data_version6/combined/targo_dataset')
     parser.add_argument("--data_contain", type=str, default="pc and targ_grid", help="Data content specification")
     parser.add_argument("--decouple", type=str2bool, default=False, help="Decouple flag")
     parser.add_argument("--dataset_raw", type=Path, default='/storage/user/dira/nips_data_version6/combined/targo_dataset')
-    parser.add_argument("--logdir", type=Path, default="/usr/stud/dira/GraspInClutter/grasping/train_logs_targo")
-    parser.add_argument("--description", type=str, default="targo_training")
+    parser.add_argument("--logdir", type=Path, default="/usr/stud/dira/GraspInClutter/targo/train_logs/ptv3_scene")
+    parser.add_argument("--description", type=str, default="")
     parser.add_argument("--savedir", type=str, default="")
-    parser.add_argument("--epochs", type=int, default=50)
-    parser.add_argument("--batch-size", type=int, default=32)
+    parser.add_argument("--epochs", type=int, default=10)
+    parser.add_argument("--batch-size", type=int, default=128)
     parser.add_argument("--lr", type=float, default=2e-4)
     parser.add_argument("--val-split", type=float, default=0.1)
     parser.add_argument("--silence", action="store_true")
@@ -864,46 +1092,47 @@ if __name__ == "__main__":
     parser.add_argument("--load-path", type=str, default='')
     parser.add_argument("--vis_data", type=str2bool, default=False, help="whether to visualize the dataset")
     parser.add_argument("--complete_shape", type=str2bool, default=True, help="use the complete the TSDF for grasp planning")
-    parser.add_argument("--ablation_dataset", type=str, default='1_100', help="1_10| 1_100| 1_100000| 1no_single_double | only_single_double|resized_set_theory|only_cluttered")
+    parser.add_argument("--ablation_dataset", type=str, default='1_10', help="1_10| 1_100| 1_100000| no_single_double | only_single_double|resized_set_theory|only_cluttered")
     parser.add_argument("--targ_grasp", type=str2bool, default=False, help="If true, use the target grasp mode, else use the clutter removal mode")
     parser.add_argument("--set_theory", type=str2bool, default=True, help="If true, use the target grasp mode, else use the clutter removal mode")
-    parser.add_argument("--use_complete_targ", type=str2bool, default=True, help="Whether to use complete target point clouds")
+    parser.add_argument("--use_complete_targ", type=str2bool, default=True, help="If true, use complete target mesh from preprocessed data")
     parser.add_argument("--lr-schedule-interval", type=int, default=10, help="Number of epochs between learning rate updates")
-    parser.add_argument("--gamma", type=float, default=0.95, help="Learning rate decay factor for scheduler")
+    parser.add_argument("--gamma", type=float, default=1, help="Learning rate decay factor for scheduler")
 
-    # Flexible parameters
-    parser.add_argument("--input_points", type=str, default='depth_target_others_tsdf', help="Input point type")
-    parser.add_argument("--shape_completion", type=str2bool, default=False, help="Whether to use shape completion")
-    
-    # Shape completion parameters (only used when shape_completion=True)
-    parser.add_argument("--sc_model_config", type=str, 
-                        default="/usr/stud/dira/GraspInClutter/grasping/src/shape_completion/configs/stso/AdaPoinTr.yaml",
-                        help="Path to shape completion model config")
-    parser.add_argument("--sc_model_checkpoint", type=str,
-                        default="/usr/stud/dira/GraspInClutter/grasping/checkpoints_gaussian/sc_net/ckpt-best_0425.pth",
-                        help="Path to shape completion model checkpoint")
+    # shape completion
+    parser.add_argument("--input_points", type=str, default='tsdf_points', help="depth_bp | tsdf_points | depth_target_others_tsdf")
+    parser.add_argument("--shape_completion", type=str2bool, default=False, help="If true, use shape completion")
+    parser.add_argument("--sc_model_config", type=str, default="/usr/stud/dira/GraspInClutter/grasping/src/shape_completion/configs/stso/AdaPoinTr.yaml", help="Shape completion model config")
+    parser.add_argument("--sc_model_checkpoint", type=str, default="/usr/stud/dira/GraspInClutter/grasping/checkpoints_gaussian/sc_net/ckpt-best_0425.pth", help="Shape completion model checkpoint")
 
-    # Wandb parameters
-    parser.add_argument("--use_wandb", type=str2bool, default=True, help="Whether to use wandb for experiment tracking")
-    parser.add_argument("--wandb_project", type=str, default="targo++", help="Wandb project name")
-    parser.add_argument("--wandb_run_name", type=str, default=None, help="Wandb run name (auto-generated if None)")
+    # wandb
+    parser.add_argument("--use_wandb", type=str2bool, default=True, help="If true, use wandb for experiment tracking")
+    parser.add_argument("--wandb_project", type=str, default="targo++", help="wandb project name")
+    parser.add_argument("--wandb_run_name", type=str, default="", help="wandb run name")
     parser.add_argument("--wandb_log_freq", type=int, default=10, help="Log to wandb every N steps (0 to log every step)")
     parser.add_argument("--wandb_offline", type=str2bool, default=False, help="If true, use wandb offline mode (sync manually later)")
+
+    # visualization arguments
+    parser.add_argument("--enable_input_vis", type=str2bool, default=True, help="Enable input data visualization")
+    parser.add_argument("--vis_freq", type=int, default=100, help="Visualize input data every N training steps")
+    parser.add_argument("--vis_dir", type=str, default="visualization", help="Directory to save visualization files")
+    parser.add_argument("--vis_wandb", type=str2bool, default=True, help="Upload visualization to wandb if enabled")
 
     args = parser.parse_args()
     
     # Auto-generate wandb run name if not provided
-    if args.use_wandb and args.wandb_run_name is None:
+    if args.use_wandb and args.wandb_run_name == "":
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        args.wandb_run_name = f"targo_full_{timestamp}"
-
+        vis_suffix = "_vis" if args.enable_input_vis else ""
+        args.wandb_run_name = f"{args.net}_{timestamp}{vis_suffix}"
+    
     # Validate network type
-    # if args.net not in ["targo"]:
-    #     raise ValueError("This script only supports original targo network type")
+    if args.net not in ["targo_ptv3", "ptv3_scene"]:
+        raise ValueError("This script only supports targo_ptv3 and ptv3_scene network types")
     
     # Print configuration
     print("=" * 60)
-    print("TARGO Training Configuration:")
+    print("Training Configuration:")
     print("=" * 60)
     for arg in vars(args):
         print(f"{arg}: {getattr(args, arg)}")
@@ -925,23 +1154,28 @@ if __name__ == "__main__":
             print("  - Using optimized log frequency (every 10 steps)")
             print("  - If upload still fails, try: --wandb_offline=True")
             print("  - Or reduce batch size: --batch-size=32")
-    print("=" * 60)
     
     print("\n" + "=" * 60)
-    if args.shape_completion:
-        print("USING SHAPE COMPLETION WITH AdaPoinTr")
-        print("ORIGINAL TARGO ARCHITECTURE")
-    else:
-        print("USING COMPLETE TARGET POINT CLOUDS (NO SHAPE COMPLETION)")
-        print("ORIGINAL TARGO ARCHITECTURE")
+    print(f"Input Visualization: {'✓ ENABLED' if args.enable_input_vis else '✗ DISABLED'}")
+    if args.enable_input_vis:
+        print(f"Visualization frequency: every {args.vis_freq} steps")
+        print(f"Visualization directory: {args.vis_dir}")
+        print(f"Wandb visualization upload: {'✓ ENABLED' if args.vis_wandb and args.use_wandb else '✗ DISABLED'}")
+        print("Features: 3D point clouds, statistical plots, multiple viewpoints")
+    print("=" * 60)
+    
+    # Special handling for complete target mesh
+    if args.use_complete_targ:
+        print("\n" + "=" * 60)
+        print("USING COMPLETE TARGET MESH FROM PREPROCESSED DATA")
         print("=" * 60)
         print("Make sure you have run the preprocessing script:")
         print("python scripts/preprocess_complete_target_mesh.py \\")
         print(f"  --raw_root {args.dataset_raw} \\")
         print(f"  --output_root {args.dataset}")
-    print("=" * 60)
+        print("=" * 60)
 
     create_logdir(args)
     print(f"\nLog directory: {args.logdir}")
 
-    main(args) 
+    main(args)

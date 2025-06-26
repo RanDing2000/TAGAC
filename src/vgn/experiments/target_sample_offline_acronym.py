@@ -10,6 +10,7 @@ import time
 import tqdm
 import trimesh
 import uuid
+import shutil
 import matplotlib.pyplot as plt
 import torch
 from datetime import datetime
@@ -33,76 +34,6 @@ from src.utils_targo import (
     compute_chamfer_and_iou
 )
 
-skip_list = {
-    "013_apple",
-    "021_bleach_cleanser",
-    "052_extra_large_clamp",
-    "025_mug",
-    "006_mustard_bottle",
-    "016_pear",
-    "010_potted_meat_can",
-    "050_medium_clamp",
-    "005_tomato_soup_can",
-    "004_sugar_box"
-}
-MAX_CONSECUTIVE_FAILURES = 2
-State = collections.namedtuple("State", ["tsdf", "pc"])
-
-
-def init_occ_level_count_dict():
-    """
-    Create a dictionary to count the number of scenes in each occlusion bin.
-    """
-    return {
-        '0-0.1': 0,
-        '0.1-0.2': 0,
-        '0.2-0.3': 0,
-        '0.3-0.4': 0,
-        '0.4-0.5': 0,
-        '0.5-0.6': 0,
-        '0.6-0.7': 0,
-        '0.7-0.8': 0,
-        '0.8-0.9': 0,
-    }
-
-
-def init_occ_level_success_dict():
-    """
-    Create a dictionary to record successful grasps in each occlusion bin.
-    """
-    return {
-        '0-0.1': 0,
-        '0.1-0.2': 0,
-        '0.2-0.3': 0,
-        '0.3-0.4': 0,
-        '0.4-0.5': 0,
-        '0.5-0.6': 0,
-        '0.6-0.7': 0,
-        '0.7-0.8': 0,
-        '0.8-0.9': 0,
-    }
-
-
-def read_target_names_from_file(target_file_path):
-    """
-    Read target names list from a specified txt file
-    
-    Args:
-        target_file_path (str): Path to the txt file
-        
-    Returns:
-        list: List of target names, returns empty list if file doesn't exist
-    """
-    target_names = []
-    if target_file_path and os.path.exists(target_file_path):
-        with open(target_file_path, 'r') as f:
-            for line in f:
-                name = line.strip()
-                if name:  # Ensure empty lines are not added
-                    target_names.append(name)
-    return target_names
-
-
 def run(
     grasp_plan_fn,
     logdir,
@@ -120,6 +51,8 @@ def run(
     occ_level_dict_path=None,
     model_type=None,
     hunyun2_path=None,
+    hunyuan3D_ptv3=False,
+    hunyuan3D_path=None,
     video_recording=True,
     target_file_path=None,  
     data_type='ycb',
@@ -187,6 +120,8 @@ def run(
         scene_name = curr_mesh_pose_list[:-4]
         # if scene_name != 'adf4a92ec4694fd5b013b78a06cf5e34_c_1':
         #     continue
+        if scene_name == 'a2701eea8f374c5ab588bec182e4d033_c_3':
+            continue
         if scene_name not in occ_level_dict:
             # os.remove(os.path.join(test_mesh_pose_list, curr_mesh_pose_list))
             # os.remove(path_to_npz)
@@ -313,7 +248,7 @@ def run(
                     extrinsic=extrinsic
             )
             
-        elif model_type == 'targo' or model_type == 'targo_full_targ' or model_type == 'targo_hunyun2' or model_type == 'targo_ptv3' or model_type == 'ptv3_scene':
+        elif model_type == 'targo' or model_type == 'targo_full_targ' or model_type == 'targo_hunyun2' or model_type == 'targo_ptv3':
             tsdf, timings["integration"], scene_no_targ_pc, targ_pc, targ_grid, occ_level = \
             sim.acquire_single_tsdf_target_grid(
                 path_to_npz,
@@ -330,6 +265,34 @@ def run(
                     occ_level=occ_level,
                     type=model_type
                 )
+        elif model_type == 'ptv3_scene':
+            try:
+                tsdf, timings["integration"], scene_no_targ_pc, complete_targ_pc, complete_targ_tsdf, targ_grid, occ_level, iou_value, cd_value, vis_dict = \
+                sim.acquire_single_tsdf_target_grid_ptv3_scene(
+                    path_to_npz,
+                    tgt_id,
+                    40,
+                    model_type,  
+                    curr_mesh_pose_list=scene_name,
+                    hunyuan3D_ptv3=hunyuan3D_ptv3,
+                    hunyuan3D_path=hunyuan3D_path,
+                )
+                state = argparse.Namespace(
+                        tsdf=tsdf,
+                        scene_no_targ_pc=scene_no_targ_pc,
+                        complete_targ_pc=complete_targ_pc,
+                        complete_targ_tsdf=complete_targ_tsdf,
+                        targ_grid=targ_grid,
+                        occ_level=occ_level,
+                        type=model_type,
+                        iou=iou_value,
+                    cd=cd_value,
+                    vis_dict=vis_dict
+                    )
+            except Exception as e:
+                print(f"ERROR: Data corruption in scene {scene_name}: {str(e)}")
+                print(f"Skipping scene {scene_name}...")
+                continue
         elif model_type in ("vgn", "giga_aff", "giga", "giga_hr"):
             tsdf, timings["integration"], scene_grid, targ_grid, targ_mask, occ_level = \
             sim.acquire_single_tsdf_target_grid(
@@ -422,7 +385,17 @@ def run(
         # else:
         # grasps, scores, timings["planning"] = grasp_plan_fn(state, scene_mesh)
 
-        if model_type == 'targo' or model_type == 'targo_full_targ' or model_type == 'targo_hunyun2' or model_type == 'targo_ptv3' or model_type == 'ptv3_scene':
+        if model_type == 'targo' or model_type == 'targo_full_targ' or model_type == 'targo_hunyun2' or model_type == 'targo_ptv3':
+            grasps, scores, timings["planning"], cd, iou = grasp_plan_fn(state, scene_mesh, hunyun2_path=hunyun2_path, scene_name=scene_name, cd_iou_measure=True, target_mesh_gt=target_mesh_gt)
+            # Store metrics for this scene
+            scene_metrics[scene_name] = {
+                "target_name": targ_name,
+                "occlusion_level": float(occ_level),
+                "cd": float(cd),
+                "iou": float(iou)
+            }
+        elif model_type == 'ptv3_scene':
+            # 专门为 ptv3_scene 模型调用
             grasps, scores, timings["planning"], cd, iou = grasp_plan_fn(state, scene_mesh, hunyun2_path=hunyun2_path, scene_name=scene_name, cd_iou_measure=True, target_mesh_gt=target_mesh_gt)
             # Store metrics for this scene
             scene_metrics[scene_name] = {
@@ -648,55 +621,9 @@ def run(
         if scene_name in scene_metrics:
             scene_metrics[scene_name]["success"] = int(label != Label.FAILURE)
 
-        # if label == Label.FAILURE and visualize:
-        # # if label == Label.FAILURE:
-        #     ## create a scene
-        #     scene_path = logdir / scene_name
-        #     scene_path.mkdir(parents=True, exist_ok=True)
-        #     metadata_path = scene_path / "scene_metadata.txt"
-
-        #     chamfer_distance, iou = compute_chamfer_and_iou(target_mesh, visual_dict['completed_targ_pc'], mesh_path=scene_path)
-
-        #     meta = {
-        #         'scene_id': scene_name,
-        #         'cd': float(chamfer_distance) * 1000,  # Convert float32 to Python float
-        #         'iou': float(iou) * 100,  # Convert float32 to Python float
-        #         'success': 0,
-        #         'time': datetime.now().isoformat(),
-        #         'occlusion': float(occ_level * 100),  # Convert float32 to Python float
-        #     }
-
-        #     # Save to meta_data_path
-        #     with open(metadata_path, 'w') as f:
-        #         json.dump(meta, f)
-
-        #     # visual_dict = {'mesh_name': scene_name, 'mesh_dir': logger.mesh_dir}
-        #     # mesh_pose_list = get_mesh_pose_list_from_world(sim.world, object_set)
-        #     # scene_mesh = get_scene_from_mesh_pose_list(mesh_pose_list, tgt_id - 1)
-        #     # grasps, scores, timings["planning"], visual_mesh = grasp_plan_fn(state, scene_mesh, visual_dict)
-
-        #     # Render snapshot
-        #     origin = Transform(Rotation.identity(), np.r_[sim.size / 2, sim.size / 2, sim.size / 3])
-        #     r = 2 * sim.size
-        #     theta = np.pi / 3.0
-        #     phi = - np.pi / 2.0
-        #     extrinsic = camera_on_sphere(origin, r, theta, phi)
-        #     rgb, _, _ = sim.camera.render_with_seg(extrinsic)
-        #     # output_path = f'{logger.mesh_dir}/{occ_level}_occ_{scene_name}_rgb.png'
-        #     img_path = scene_path / "scene_rgb.png"
-        #     plt.imsave(img_path, rgb)
-        #     visual_dict['composed_scene'].export(f'{scene_path}/composed_scene.obj')
-        #     visual_dict['affordance_visual'].export(f'{scene_path}/affordance_visual.obj')
-
-        #     save_point_cloud_as_ply(visual_dict['completed_targ_pc'], scene_path / "completed_targ_pc.ply")
-        #     transformed_pc = (visual_dict['targ_pc'] + 0.5) * 0.3
-        #     save_point_cloud_as_ply(transformed_pc, scene_path / "targ_pc.ply")
-        #     # save_point_cloud_as_ply(transformed_pc, scene_path / "targ_pc.ply")
-
-        #     gt_targ_pc, _ = trimesh.sample.sample_surface(target_mesh, count=2048)
-        #     gt_targ_pc = (gt_targ_pc / 0.3) - 0.5
-        #     save_point_cloud_as_ply(gt_targ_pc, scene_path / "gt_targ_pc.ply")
-            
+        # Visualization for all scenes (移植自target_sample_offline_hunyuan.py)
+        if visualize:
+            save_scene_visualization(scene_name, state, target_mesh, scene_metrics, occ_level, label, logdir, sim)
 
         count_label_dict[scene_name] = (int(label), len(occluder_heights), occ_level)
         height_label_dict[scene_name] = (int(label), relative_height, occ_level)
@@ -783,9 +710,10 @@ def run(
     # with open(f'{result_path}/tgt_bbx_label_dict_0.json', 'w') as f:
     #     json.dump(tgt_bbx_label_dict, f)
 
-    # with open(f'{result_path}/visual_failure_count.txt', 'w') as f:
-    #     f.write(f"visual_failure_count:{visual_failure_count}\n")
-    #     f.write(f"plan_failure_count:{plan_failure_count}\n")
+    # Save failure statistics (移植自target_sample_offline_hunyuan.py)
+    with open(f'{result_path}/visual_failure_count.txt', 'w') as f:
+        f.write(f"visual_failure_count:{visual_failure_count}\n")
+        f.write(f"plan_failure_count:{plan_failure_count}\n")
     # final_sr = occ_level_dict
 
     # Calculate success rate only for non-zero count levels
@@ -1004,3 +932,177 @@ def validate_point_count(count):
     """
     if not isinstance(count, int) or count <= 0:
         raise ValueError(f"Point count must be positive integer, got {count}")
+
+skip_list = {
+    "013_apple",
+    "021_bleach_cleanser",
+    "052_extra_large_clamp",
+    "025_mug",
+    "006_mustard_bottle",
+    "016_pear",
+    "010_potted_meat_can",
+    "050_medium_clamp",
+    "005_tomato_soup_can",
+    "004_sugar_box"
+}
+MAX_CONSECUTIVE_FAILURES = 2
+State = collections.namedtuple("State", ["tsdf", "pc"])
+
+
+def init_occ_level_count_dict():
+    """
+    Create a dictionary to count the number of scenes in each occlusion bin.
+    """
+    return {
+        '0-0.1': 0,
+        '0.1-0.2': 0,
+        '0.2-0.3': 0,
+        '0.3-0.4': 0,
+        '0.4-0.5': 0,
+        '0.5-0.6': 0,
+        '0.6-0.7': 0,
+        '0.7-0.8': 0,
+        '0.8-0.9': 0,
+    }
+
+
+def init_occ_level_success_dict():
+    """
+    Create a dictionary to record successful grasps in each occlusion bin.
+    """
+    return {
+        '0-0.1': 0,
+        '0.1-0.2': 0,
+        '0.2-0.3': 0,
+        '0.3-0.4': 0,
+        '0.4-0.5': 0,
+        '0.5-0.6': 0,
+        '0.6-0.7': 0,
+        '0.7-0.8': 0,
+        '0.8-0.9': 0,
+    }
+
+
+def read_target_names_from_file(target_file_path):
+    """
+    Read target names list from a specified txt file
+    
+    Args:
+        target_file_path (str): Path to the txt file
+        
+    Returns:
+        list: List of target names, returns empty list if file doesn't exist
+    """
+    target_names = []
+    if target_file_path and os.path.exists(target_file_path):
+        with open(target_file_path, 'r') as f:
+            for line in f:
+                name = line.strip()
+                if name:  # Ensure empty lines are not added
+                    target_names.append(name)
+    return target_names
+
+def save_scene_visualization(scene_name, state, target_mesh, scene_metrics, occ_level, label, logdir, sim):
+    """
+    Save visualization data for a scene.
+    
+    Args:
+        scene_name: Name of the scene
+        state: State object containing scene data
+        target_mesh: Ground truth target mesh
+        scene_metrics: Dictionary containing scene metrics
+        occ_level: Occlusion level
+        label: Grasp success/failure label
+        logdir: Log directory path
+        sim: Simulation object for rendering
+    """
+    ## create a scene visualization directory
+    scene_vis_path = logdir / "scene_vis" / scene_name
+    scene_vis_path.mkdir(parents=True, exist_ok=True)
+    metadata_path = scene_vis_path / "scene_metadata.txt"
+
+    # 由于acronym版本中没有visual_dict，我们需要从state中获取数据
+    # 或者使用scene_metrics中已有的cd, iou值
+    if scene_name in scene_metrics:
+        cd_value = scene_metrics[scene_name]["cd"]
+        iou_value = scene_metrics[scene_name]["iou"]
+    else:
+        cd_value = 0.0
+        iou_value = 0.0
+
+    meta = {
+        'scene_id': scene_name,
+        'cd': float(cd_value) * 1000,  # Convert float32 to Python float
+        'iou': float(iou_value) * 100,  # Convert float32 to Python float
+        'success': int(label != Label.FAILURE),
+        'time': datetime.now().isoformat(),
+        'occlusion': float(occ_level * 100),  # Convert float32 to Python float
+    }
+
+    # 保存到meta_data_path
+    with open(metadata_path, 'w') as f:
+        json.dump(meta, f)
+
+    # Render snapshot
+    origin = Transform(Rotation.identity(), np.r_[sim.size / 2, sim.size / 2, sim.size / 3])
+    r = 2 * sim.size
+    theta = np.pi / 3.0
+    phi = - np.pi / 2.0
+    extrinsic = camera_on_sphere(origin, r, theta, phi)
+    # rgb, depth, _ = sim.camera.render_with_seg(extrinsic)
+    depth = state.vis_dict["depth_img"]
+    
+    # Save RGB image
+    img_path = scene_vis_path / "scene_rgb.png"
+    scene_img_path = state.vis_dict["scene_rgba_path"]
+    ## copy scene_img_path to img_path
+    shutil.copy(scene_img_path, img_path)
+    # scene_img = cv2.imread(scene_img_path)
+    # cv2.imwrite(img_path, scene_img)
+    # plt.imsave(img_path, rgb)
+    
+    # Save depth map and depth visualization
+    depth_path = scene_vis_path / "scene_depth.npy"
+    np.save(depth_path, depth)
+    
+    # Create depth visualization (normalize depth for better visualization)
+    depth_vis = depth.copy()
+    # Remove invalid depth values (usually 0 or inf)
+    valid_mask = (depth_vis > 0) & (depth_vis < np.inf)
+    if valid_mask.any():
+        min_depth = depth_vis[valid_mask].min()
+        max_depth = depth_vis[valid_mask].max()
+        # Normalize to [0, 1] range
+        depth_vis[valid_mask] = (depth_vis[valid_mask] - min_depth) / (max_depth - min_depth)
+        # Apply colormap for better visualization
+        depth_colored = plt.cm.viridis(depth_vis)[:, :, :3]  # Remove alpha channel
+        depth_vis_path = scene_vis_path / "scene_depth_vis.png"
+        plt.imsave(depth_vis_path, depth_colored)
+        
+        # Also save grayscale version
+        depth_gray_path = scene_vis_path / "scene_depth_gray.png"
+        plt.imsave(depth_gray_path, depth_vis, cmap='gray')
+        
+        print(f"Depth map saved: {depth_path}")
+        print(f"Depth visualization saved: {depth_vis_path}")
+    else:
+        print(f"Warning: No valid depth values found for scene {scene_name}")
+    
+    # 保存场景网格和可操作性可视化（如果可用）
+    if hasattr(state, 'scene_mesh') and state.scene_mesh is not None:
+        state.scene_mesh.export(f'{scene_vis_path}/composed_scene.obj')
+    
+    # 保存点云数据（如果可用）
+    if hasattr(state, 'complete_targ_pc') and state.complete_targ_pc is not None:
+        save_point_cloud_as_ply(state.complete_targ_pc, scene_vis_path / "completed_targ_pc.ply")
+    
+    if hasattr(state, 'targ_pc') and state.targ_pc is not None:
+        transformed_pc = (state.targ_pc + 0.5) * 0.3
+        save_point_cloud_as_ply(transformed_pc, scene_vis_path / "targ_pc.ply")
+    
+    # 保存地面真值目标点云
+    gt_targ_pc, _ = trimesh.sample.sample_surface(target_mesh, count=2048)
+    gt_targ_pc = (gt_targ_pc / 0.3) - 0.5
+    save_point_cloud_as_ply(gt_targ_pc, scene_vis_path / "gt_targ_pc.ply")
+    
+    print(f"Visualization saved for scene {scene_name} at {scene_vis_path}")

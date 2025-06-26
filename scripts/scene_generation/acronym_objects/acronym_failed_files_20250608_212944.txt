@@ -1,0 +1,7 @@
+# Failed files for ACRONYM dataset
+# Generated on: 2025-06-08 21:29:44
+# Total failed files: 2
+#==================================================
+
+324f2ef1972549f68e7466f21ee9a35f_c_1.npz
+a2701eea8f374c5ab588bec182e4d033_c_3.npz

@@ -121,8 +121,8 @@ def run(
         path_to_npz = os.path.join(test_scenes, curr_mesh_pose_list)
         scene_name = curr_mesh_pose_list[:-4]
         if scene_name not in sim.occ_level_dict:
-            os.remove(os.path.join(test_mesh_pose_list, curr_mesh_pose_list))
-            os.remove(path_to_npz)
+            # os.remove(os.path.join(test_mesh_pose_list, curr_mesh_pose_list))
+            # os.remove(path_to_npz)
             continue
 
         # Prepare simulator
