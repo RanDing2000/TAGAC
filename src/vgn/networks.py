@@ -3,7 +3,7 @@ from builtins import super
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from src.vgn.ConvONets.conv_onet.config import get_model, get_model_targo, get_model_targo_ptv3, get_model_ptv3_scene
+from src.vgn.ConvONets.conv_onet.config import get_model, get_model_targo, get_model_targo_ptv3, get_model_ptv3_scene, get_model_ptv3_clip
 
 def get_network(name):
     models = {
@@ -17,6 +17,7 @@ def get_network(name):
         "targo_hunyun2": TARGONet,
         "targo_ptv3": TARGOPtv3Net,
         "ptv3_scene": Ptv3SceneNet,
+        "ptv3_clip": Ptv3ClipNet,
     }
     return models[name.lower()]()
 
@@ -313,6 +314,37 @@ def Ptv3SceneNet():
     }
     
     return get_model_ptv3_scene(cfg)
+
+def Ptv3ClipNet():
+    """
+    Network configuration for PTv3 CLIP model - processes scene point cloud with CLIP features.
+    """
+    cfg = {
+        'model_type': 'ptv3_clip',
+        'd_model': 64,
+        'cross_att_key': 'pointnet_cross_attention',
+        'num_attention_layers': 0,
+        'encoder': 'voxel_simple_local_without_3d',
+        'encoder_kwargs': {
+            'plane_type': ['xz', 'xy', 'yz'],
+            'plane_resolution': 40,
+            'unet': True,
+            'unet_kwargs': {
+                'depth': 4,
+                'merge_mode': 'concat',
+                'start_filts': 32
+            },
+        },
+        'decoder': 'simple_local',
+        'decoder_kwargs': {
+            'sample_mode': 'bilinear',
+            'hidden_size': 32,
+        },
+        'padding': 0,
+        'c_dim': 64,
+    }
+    
+    return get_model_ptv3_clip(cfg)
 
 
 class Encoder(nn.Module):

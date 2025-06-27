@@ -415,3 +415,66 @@ def get_model_ptv3_scene(cfg, device=None, dataset=None):
     )
 
     return model
+
+def get_model_ptv3_clip(cfg, device=None, dataset=None):
+    """
+    Create PTv3 CLIP model that processes scene point cloud with CLIP features.
+    
+    Args:
+        cfg: Configuration dictionary
+        device: Device to place model on
+        dataset: Dataset (optional)
+    
+    Returns:
+        ConvolutionalOccupancyNetwork_Grid model with PTv3 CLIP encoder
+    """
+    decoder = cfg['decoder']
+    encoder = cfg['encoder']
+    c_dim = cfg['c_dim']
+    decoder_kwargs = cfg['decoder_kwargs']
+    encoder_kwargs = cfg['encoder_kwargs']
+    padding = cfg.get('padding', 0.1)
+    local_coord = cfg.get('local_coord', False)
+    pos_encoding = cfg.get('pos_encoding', 'linear')
+
+    # Handle optional parameters
+    tsdf_only = cfg.get('tsdf_only', False)
+    detach_tsdf = cfg.get('detach_tsdf', False)
+
+    # Initialize decoders
+    decoder_kwargs['c_dim'] = c_dim
+    decoder_kwargs['padding'] = padding
+    # Remove out_dim from decoder_kwargs to avoid conflict
+    if tsdf_only:
+        decoder_kwargs['tsdf_only'] = tsdf_only
+    if detach_tsdf:
+        decoder_kwargs['detach_tsdf'] = detach_tsdf
+
+    # Create decoders with proper out_dim
+    decoder_qual = models.decoder_dict[decoder](out_dim=1, **decoder_kwargs)
+    decoder_rot = models.decoder_dict[decoder](out_dim=4, **decoder_kwargs)
+    decoder_width = models.decoder_dict[decoder](out_dim=1, **decoder_kwargs)
+    
+    # Create decoders list
+    decoders = [decoder_qual, decoder_rot, decoder_width]
+
+    # Import PointTransformerV3CLIPModel only when needed (for ptv3_clip model)
+    from src.transformer.ptv3_clip_model import PointTransformerV3CLIPModel
+    encoder_in = PointTransformerV3CLIPModel()
+    
+    # Create encoder_aff (scene encoder)
+    encoder_aff_scene = encoder_dict[encoder](
+        c_dim=c_dim, padding=padding,
+        **encoder_kwargs
+    )
+    
+    # Create encoders_in list
+    encoders_in = [encoder_in]
+
+    # Create the model with correct parameter format
+    model = models.ConvolutionalOccupancyNetwork_Grid(
+        decoders, encoders_in, encoder_aff_scene,
+        device=device, detach_tsdf=detach_tsdf, model_type='ptv3_clip'
+    )
+
+    return model
