@@ -11,8 +11,160 @@ from src.vgn.networks import load_network
 from src.vgn.utils import visual
 from src.utils_giga import *
 from src.utils_targo import tsdf_to_mesh, filter_and_pad_point_clouds, save_point_cloud_as_ply
+import pyvista as pv  
+# Import pyrender for rendering
+try:
+    import pyrender
+    from PIL import Image
+    PYRENDER_AVAILABLE = True
+    print("✓ pyrender package available for rendering")
+except ImportError:
+    PYRENDER_AVAILABLE = False
+    print("✗ pyrender package not available, rendering will be skipped")
 
 LOW_TH = 0.0
+
+# import os
+# import numpy as np
+# import trimesh
+# import pyvista as pv
+
+def render_colored_scene_mesh_with_pyvista(colored_scene_mesh,
+                                           output_path="demo/ptv3_scene_affordance_visual.png",
+                                           width=640, height=480):
+    """
+    Render a trimesh object using PyVista with original color, white background, no text or colorbar.
+    """
+    try:
+        if colored_scene_mesh.vertices.size == 0 or colored_scene_mesh.faces.size == 0:
+            print("Mesh is empty!")
+            return False
+
+        # 获取 mesh 原始颜色
+        face_colors = getattr(colored_scene_mesh.visual, "face_colors", None)
+
+        # 转为 PyVista mesh
+        faces_flat = np.hstack(
+            np.c_[np.full(len(colored_scene_mesh.faces), 3),
+                  colored_scene_mesh.faces]
+        ).astype(np.int64).ravel()
+        pv_mesh = pv.PolyData(colored_scene_mesh.vertices, faces_flat)
+
+        if face_colors is not None:
+            pv_mesh.cell_data["colors"] = face_colors
+            pv_mesh.cell_data.active_scalars_name = "colors"
+
+        # 创建渲染器
+        plotter = pv.Plotter(off_screen=True, window_size=(width, height))
+        plotter.add_mesh(
+            pv_mesh,
+            show_edges=False,
+            show_scalar_bar=False  # ✅ 关闭颜色条
+        )
+        plotter.set_background("white")
+
+        # 设置相机（远视角）
+        center = pv_mesh.center
+        bounds = pv_mesh.bounds
+        extent = max(bounds[1]-bounds[0], bounds[3]-bounds[2], bounds[5]-bounds[4])
+        iso_dir = np.array([1, 1, 1]) / np.sqrt(3)
+        camera_pos = center + iso_dir * extent * 4
+
+        plotter.camera.position = camera_pos.tolist()
+        plotter.camera.focal_point = list(center)
+        plotter.camera.up = [0, 0, 1]
+
+        # 渲染并保存
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        plotter.screenshot(output_path)
+        plotter.close()
+
+        return True
+
+    except Exception as e:
+        print(f"Error rendering with PyVista: {e}")
+        import traceback; traceback.print_exc()
+        return False
+
+    
+# def render_colored_scene_mesh_with_pyrender(colored_scene_mesh, output_path="demo/ptv3_scene_affordance_visual.png", 
+#                                           width=800, height=600, camera_distance=0.5):
+#     """
+#     Render colored scene mesh using pyrender package and save it as an image.
+    
+#     Args:
+#         colored_scene_mesh: trimesh object
+#         output_path: path to save the rendered image
+#         width: image width
+#         height: image height
+#         camera_distance: distance from camera to scene center
+#     """
+#     if not PYRENDER_AVAILABLE:
+#         print("pyrender not available, skipping rendering")
+#         return False
+    
+#     try:
+#         # Ensure the mesh has visual properties
+#         if not hasattr(colored_scene_mesh, 'visual') or colored_scene_mesh.visual is None:
+#             colored_scene_mesh.visual = trimesh.visual.ColorVisuals()
+        
+#         # Set all mesh faces to blue color (RGBA) if not already colored
+#         if not hasattr(colored_scene_mesh.visual, 'face_colors') or colored_scene_mesh.visual.face_colors is None:
+#             colored_scene_mesh.visual.face_colors = np.full((len(colored_scene_mesh.faces), 4), [0, 0, 255, 255], dtype=np.uint8)
+
+#         # Create pyrender scene
+#         scene = pyrender.Scene(ambient_light=[0.3, 0.3, 0.3], bg_color=[255, 255, 255])
+
+#         # Add the colored mesh to the scene
+#         mesh_render = pyrender.Mesh.from_trimesh(colored_scene_mesh, smooth=False)
+#         scene.add(mesh_render)
+
+#         # Set up camera with better positioning
+#         camera = pyrender.PerspectiveCamera(yfov=np.pi / 4.0, aspectRatio=float(width) / height)
+        
+#         # Calculate camera position based on mesh bounds
+#         bounds = colored_scene_mesh.bounds
+#         center = (bounds[0] + bounds[1]) / 2
+#         extent = np.linalg.norm(bounds[1] - bounds[0])
+#         camera_distance = max(camera_distance, extent * 1.5)
+        
+#         camera_pose = np.eye(4)
+#         camera_pose[:3, 3] = center + [camera_distance, camera_distance, camera_distance]
+#         scene.add(camera, pose=camera_pose)
+
+#         # Set up lighting
+#         light = pyrender.DirectionalLight(color=[1.0, 1.0, 1.0], intensity=2.0)
+#         light_pose = np.eye(4)
+#         light_pose[:3, 3] = center + [0, -camera_distance, camera_distance]
+#         scene.add(light, pose=light_pose)
+        
+#         # Add ambient light
+#         ambient_light = pyrender.AmbientLight(color=[0.5, 0.5, 0.5], intensity=0.5)
+#         scene.add(ambient_light)
+
+#         # Render the scene
+#         renderer = pyrender.OffscreenRenderer(width, height)
+#         color, depth = renderer.render(scene)
+        
+#         # Clean up
+#         renderer.delete()
+
+#         # Ensure output directory exists
+#         os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+#         # Save the rendered image
+#         image = Image.fromarray(color)
+#         image.save(output_path)
+#         print(f"Rendered image saved to: {output_path}")
+#         print(f"Image size: {image.size}, Color range: {color.min()}-{color.max()}")
+#         return True
+
+#     except Exception as e:
+#         print(f"Error rendering with pyrender: {e}")
+#         import traceback
+#         traceback.print_exc()
+#         return False
+
 
 def predict_ptv3_scene(inputs, pos, net, device, visual_dict=None, state=None, target_mesh_gt=None):
     """
@@ -303,6 +455,28 @@ class PTV3SceneImplicit(object):
         if self.visualize:
             colored_scene_mesh = visual.affordance_visual(qual_vol, rot_vol, scene_mesh, size, self.resolution, **aff_kwargs)
             visual_dict['affordance_visual'] = colored_scene_mesh
+            
+            # Save colored_scene_mesh to demo directory
+            # if not os.path.exists('demo'):
+            #     os.makedirs('demo')
+            
+            demo_affordance_path = f"{state.vis_path}/ptv3_scene_affordance_visual.obj"
+            colored_scene_mesh.export(demo_affordance_path)
+            print(f"Saved affordance visualization to demo: {demo_affordance_path}")
+            
+            # Render colored scene mesh with pyrender
+            render_success = render_colored_scene_mesh_with_pyvista(
+                colored_scene_mesh, 
+                output_path=f"{state.vis_path}/ptv3_scene_affordance_visual.png",
+                width=800, 
+                height=600, 
+                # camera_distance=0.5
+            )
+            
+            if render_success:
+                print("✓ Successfully rendered colored scene mesh with pyrender")
+            else:
+                print("✗ Failed to render colored scene mesh with pyrender")
 
         # Select grasps from prediction volumes
         grasps, scores = select(

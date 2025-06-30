@@ -278,106 +278,69 @@ def process_npz_file_with_steps(npz_path, mesh_pose_path, model, preprocess, dev
         clip_features_dict: Pre-computed CLIP features for categories
         output_dir: Output directory for processed files
     """
-    try:
-        print(f"\nProcessing {npz_path.name}...")
-        
-        # Load the npz file
-        data = np.load(npz_path, allow_pickle=True)
-        
-        # Load mesh_pose_dict
-        mesh_pose_data = np.load(mesh_pose_path, allow_pickle=True)
-        mesh_pose_dict = mesh_pose_data["pc"].item()
-        
-        # Extract point cloud data
-        occluder_points = data['pc_scene_no_targ']
-        targ_points = data['complete_target_pc']
-        all_points = np.vstack([occluder_points, targ_points])
+    # try:
+    print(f"\nProcessing {npz_path.name}...")
+    scene_name = npz_path.stem
+    target_id = int(scene_name.split('_')[-1])  # Convert to 0-based index
+    
+    # Load the npz file
+    data = np.load(npz_path, allow_pickle=True)
+    
+    # Check if mask_targ exists in data
+    if 'mask_targ' not in data:
+        print(f"Warning: mask_targ not found in {scene_name}")
+        return None
+    
+    # Load mesh_pose_dict
+    mesh_pose_data = np.load(mesh_pose_path, allow_pickle=True)
+    mesh_pose_dict = mesh_pose_data["pc"].item()
+    if '_c_' in scene_name:
         segmentation_map = data['segmentation_map']
         mask_targ = data['mask_targ']
-        
-        # Get target ID from scene name
-        scene_name = npz_path.stem
-        target_id = int(scene_name.split('_')[-1])  # Convert to 0-based index
-        
-        # # Step 1: Build pybullet scene
-        # from src.vgn.simulation import ClutterRemovalSim
-        # sim = ClutterRemovalSim("packed", "packed/train", gui=False)
+    elif '_s_' in scene_name:
+        # segmentation_map = data['segmentation_map']
+        mask_targ = data['mask_targ']
+    
+    # if '_c_' in scene_name:
+    object_meshes = []
+    obj_id_list = np.unique(list(mesh_pose_dict.keys()))
+    object_poses = []
+    object_scales = []
+    object_categories_dict = {}
+    
+    for obj_id, (mesh_path, scale, pose) in enumerate(mesh_pose_dict.values()):
+        # Load mesh
+        mesh = trimesh.load(mesh_path)
+        object_meshes.append(mesh)
+        object_poses.append(pose)
+        object_scales.append(scale)
+        mesh_filename = mesh_path.split("/")[-1]
+        if mesh_filename == 'plane.obj':
+            mesh_id = mesh_filename.split("_")[0].split(".")[0]
+        else:
+            mesh_id = mesh_filename.replace('.obj', '')
+            # For files like 'PineappleSlices_800_tex_visual.obj', remove the trailing '_visual'
+            if mesh_id.endswith('_visual'):
+                mesh_id = mesh_id[:-7]
+        # Extract category using TARGO mapping
+        category = extract_object_category_from_path(mesh_id, object_category_mapping)
+        object_categories_dict[obj_id_list[obj_id]] = category
 
-
-        object_meshes = []
-        object_poses = []
-        object_scales = []
-        object_categories = []
-        
-        for obj_id, (mesh_path, scale, pose) in enumerate(mesh_pose_dict.values()):
-            # Load mesh
-            mesh = trimesh.load(mesh_path)
-            object_meshes.append(mesh)
-            object_poses.append(pose)
-            object_scales.append(scale)
-            mesh_filename = mesh_path.split("/")[-1]
-            if mesh_filename == 'plane.obj':
-                mesh_id = mesh_filename.split("_")[0].split(".")[0]
-            else:
-                mesh_id = mesh_filename.replace('.obj', '')
-                # For files like 'PineappleSlices_800_tex_visual.obj', remove the trailing '_visual'
-                if mesh_id.endswith('_visual'):
-                    mesh_id = mesh_id[:-7]
-            
-            # Extract category using TARGO mapping
-            category = extract_object_category_from_path(mesh_id, object_category_mapping)
-            object_categories.append(category)
-        
-        # Example: extract '2' from npz_path
-        # npz_path = PosixPath('/usr/stud/dira/GraspInClutter/targo/data_scenes/targo_dataset/scenes/6776236d6eed443ebec7405633aadbdd_c_2.npz')
+    if '_c_' in scene_name:
         scene_name = npz_path.stem  # '6776236d6eed443ebec7405633aadbdd_c_2'
         assert np.any((segmentation_map == target_id) == (mask_targ == True)) == True
+        target_category = object_categories_dict[target_id]
+    elif '_s_' in scene_name:
+        assert len(object_categories_dict) == 2
+        target_category = object_categories_dict[obj_id_list[-1]]
+    
+    return target_category
         
-        # # Get target ID from scene name
-        # scene_name = npz_path.stem
-        # target_id = int(scene_name.split('_')[-1]) - 1  # Convert to 0-based index
 
-        # for obj_id, (mesh_path, scale, pose) in enumerate(mesh_pose_dict.values()):
-        # # Load mesh for trimesh processing
-        #     mesh = trimesh.load(mesh_path)
-        #     object_meshes.append(mesh)
-        #     object_poses.append(pose)
-        #     object_scales.append(scale)
-            
-        # # object_meshes, object_poses, object_scales, object_categories = build_pybullet_scene(sim, mesh_pose_dict)
-        
-        # # Step 2: Get category labels
-        # object_labels, instance_labels, category_labels = get_category_labels(
-        #     all_points, object_meshes, object_poses, object_scales, object_categories, target_id, class_names
-        # )
-        
-        # Step 3: Get CLIP features
-        clip_features = get_category_clip_features(category_labels, class_names, clip_features_dict)
-        
-        # Create enhanced data dictionary
-        enhanced_data = {
-            'points': all_points.astype(np.float32),
-            'instance_labels': instance_labels.astype(np.int32),
-            'category_labels': category_labels.astype(np.int32),
-            'object_labels': object_labels.astype(np.int32),
-            'clip_features': clip_features.astype(np.float32)
-        }
-        
-        # Add original data
-        for key in data.keys():
-            enhanced_data[key] = data[key]
-        
-        # Save enhanced data
-        output_path = output_dir / npz_path.name
-        np.savez_compressed(output_path, **enhanced_data)
-        
-        print(f"Completed {npz_path.name}: {len(all_points)} points, "
-              f"{len(occluder_points)} occluder points, {len(targ_points)} target points")
-        
-    except Exception as e:
-        print(f"Error processing {npz_path}: {str(e)}")
-        import traceback
-        traceback.print_exc()
+    # except Exception as e:
+    #     print(f"Error processing {npz_path}: {str(e)}")
+    #     import traceback
+    #     traceback.print_exc()
 
 def main():
     parser = argparse.ArgumentParser(description="Add category labels and CLIP features to scene npz files")
@@ -395,6 +358,10 @@ def main():
     # Use the same scenes directory for output
     scenes_dir = Path(args.scenes_dir)
     mesh_pose_dir = Path(args.mesh_pose_dir)
+    
+    # Create tmp directory if it doesn't exist
+    tmp_dir = Path("tmp")
+    tmp_dir.mkdir(exist_ok=True)
     
     # Load CLIP model
     print("Loading CLIP model...")
@@ -419,9 +386,19 @@ def main():
         npz_files = npz_files[:args.max_files]
     
     print(f"Found {len(npz_files)} npz files to process")
-    
+
+    category_scene_dict = {}
+    no_mask_targ_files = []
+    # start_flag = False
     # Process each npz file using three-step approach
     for npz_file in tqdm(npz_files, desc="Processing npz files"):
+        scene_name = npz_file.stem
+        if scene_name == 'b960209b0cbd406d98dac25aeccd3c71_s_2':
+            continue
+        # start_flag = True
+        # if start_flag == False:
+        #     continue
+
         # Find corresponding mesh_pose_dict file
         import re
         match = re.match(r"(.+_c)(?:_\d+)?\.npz", npz_file.name)
@@ -432,22 +409,28 @@ def main():
         mesh_pose_file = mesh_pose_dir / mesh_pose_filename
 
         if mesh_pose_file.exists():
-            process_npz_file_with_steps(npz_file, mesh_pose_file, model, preprocess, device, 
+            target_category = process_npz_file_with_steps(npz_file, mesh_pose_file, model, preprocess, device, 
                                       class_names, object_category_mapping, clip_features_dict, scenes_dir)
+            if target_category is None:
+                # Record file without mask_targ
+                no_mask_targ_files.append(scene_name)
+                continue
+            category_scene_dict[scene_name] = target_category
         else:
             print(f"Warning: No mesh_pose_dict file found for {npz_file.name}")
     
-    # Save category mapping to scenes directory
-    with open(scenes_dir / "class_names.json", 'w') as f:
-        json.dump(class_names, f, indent=2)
+    # Save files without mask_targ to tmp/no_mask_targ_file.txt
+    if no_mask_targ_files:
+        no_mask_targ_file_path = tmp_dir / "no_mask_targ_file.txt"
+        with open(no_mask_targ_file_path, 'w') as f:
+            for scene_name in no_mask_targ_files:
+                f.write(f"{scene_name}\n")
+        print(f"Found {len(no_mask_targ_files)} files without mask_targ, saved to {no_mask_targ_file_path}")
+    else:
+        print("All processed files have mask_targ data")
     
-    # Save object category mapping to scenes directory
-    with open(scenes_dir / "object_category_mapping.json", 'w') as f:
-        json.dump(object_category_mapping, f, indent=2)
+    with open("/usr/stud/dira/GraspInClutter/targo/data_scenes/targo_dataset/category_scene_dict.json", "w") as f:
+        json.dump(category_scene_dict, f, indent=2)
     
-    print(f"Processing complete! Instance segmentation data added to existing files in {scenes_dir}")
-    print(f"Class names mapping saved to {scenes_dir / 'class_names.json'}")
-    print(f"Object category mapping saved to {scenes_dir / 'object_category_mapping.json'}")
-
 if __name__ == "__main__":    
     main()

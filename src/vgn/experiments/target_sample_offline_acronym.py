@@ -265,6 +265,17 @@ def run(
                     occ_level=occ_level,
                     type=model_type
                 )
+        # elif model_type == 'ptv3_scene':
+        #     # 专门为 ptv3_scene 模型调用
+        #     visual_dict = {}  # 创建 visual_dict 来接收可视化数据
+        #     grasps, scores, timings["planning"], cd, iou = grasp_plan_fn(state, scene_mesh, visual_dict=visual_dict, hunyun2_path=hunyun2_path, scene_name=scene_name, cd_iou_measure=True, target_mesh_gt=target_mesh_gt)
+        #     # Store metrics for this scene
+        #     scene_metrics[scene_name] = {
+        #         "target_name": targ_name,
+        #         "occlusion_level": float(occ_level),
+        #         "cd": float(cd),
+        #         "iou": float(iou)
+        #     }
         elif model_type == 'ptv3_scene':
             try:
                 tsdf, timings["integration"], scene_no_targ_pc, complete_targ_pc, complete_targ_tsdf, targ_grid, occ_level, iou_value, cd_value, vis_dict = \
@@ -277,6 +288,8 @@ def run(
                     hunyuan3D_ptv3=hunyuan3D_ptv3,
                     hunyuan3D_path=hunyuan3D_path,
                 )
+                vis_path = f'{logdir}/scene_vis/{scene_name}'
+                os.makedirs(vis_path, exist_ok=True)
                 state = argparse.Namespace(
                         tsdf=tsdf,
                         scene_no_targ_pc=scene_no_targ_pc,
@@ -285,14 +298,17 @@ def run(
                         targ_grid=targ_grid,
                         occ_level=occ_level,
                         type=model_type,
+                        # vis_path=vis_path,
                         iou=iou_value,
-                    cd=cd_value,
-                    vis_dict=vis_dict
+                        cd=cd_value,
+                        vis_dict=vis_dict,
+                        vis_path=vis_path
                     )
             except Exception as e:
                 print(f"ERROR: Data corruption in scene {scene_name}: {str(e)}")
                 print(f"Skipping scene {scene_name}...")
                 continue
+
         elif model_type in ("vgn", "giga_aff", "giga", "giga_hr"):
             tsdf, timings["integration"], scene_grid, targ_grid, targ_mask, occ_level = \
             sim.acquire_single_tsdf_target_grid(
@@ -1002,7 +1018,7 @@ def read_target_names_from_file(target_file_path):
                     target_names.append(name)
     return target_names
 
-def save_scene_visualization(scene_name, state, target_mesh, scene_metrics, occ_level, label, logdir, sim):
+def save_scene_visualization(scene_name, state, target_mesh, scene_metrics, occ_level, label, logdir, sim, visual_dict=None):
     """
     Save visualization data for a scene.
     
@@ -1015,11 +1031,13 @@ def save_scene_visualization(scene_name, state, target_mesh, scene_metrics, occ_
         label: Grasp success/failure label
         logdir: Log directory path
         sim: Simulation object for rendering
+        visual_dict: Dictionary containing visualization data (optional)
     """
     ## create a scene visualization directory
-    scene_vis_path = logdir / "scene_vis" / scene_name
-    scene_vis_path.mkdir(parents=True, exist_ok=True)
-    metadata_path = scene_vis_path / "scene_metadata.txt"
+    # scene_vis_path = logdir / "scene_vis" / scene_name
+    scene_vis_path = state.vis_path 
+    # scene_vis_path.mkdir(parents=True, exist_ok=True)
+    metadata_path = f'{scene_vis_path}/scene_metadata.txt'
 
     # 由于acronym版本中没有visual_dict，我们需要从state中获取数据
     # 或者使用scene_metrics中已有的cd, iou值
@@ -1053,7 +1071,7 @@ def save_scene_visualization(scene_name, state, target_mesh, scene_metrics, occ_
     depth = state.vis_dict["depth_img"]
     
     # Save RGB image
-    img_path = scene_vis_path / "scene_rgb.png"
+    img_path = f'{scene_vis_path}/scene_rgb.png'
     scene_img_path = state.vis_dict["scene_rgba_path"]
     ## copy scene_img_path to img_path
     shutil.copy(scene_img_path, img_path)
@@ -1062,7 +1080,7 @@ def save_scene_visualization(scene_name, state, target_mesh, scene_metrics, occ_
     # plt.imsave(img_path, rgb)
     
     # Save depth map and depth visualization
-    depth_path = scene_vis_path / "scene_depth.npy"
+    depth_path = f'{scene_vis_path}/scene_depth.npy'
     np.save(depth_path, depth)
     
     # Create depth visualization (normalize depth for better visualization)
@@ -1076,12 +1094,12 @@ def save_scene_visualization(scene_name, state, target_mesh, scene_metrics, occ_
         depth_vis[valid_mask] = (depth_vis[valid_mask] - min_depth) / (max_depth - min_depth)
         # Apply colormap for better visualization
         depth_colored = plt.cm.viridis(depth_vis)[:, :, :3]  # Remove alpha channel
-        depth_vis_path = scene_vis_path / "scene_depth_vis.png"
-        plt.imsave(depth_vis_path, depth_colored)
+        depth_vis_path = f'{scene_vis_path}/scene_depth_vis.png'
+        plt.imsave(depth_vis_path, depth_colored[0])
         
         # Also save grayscale version
-        depth_gray_path = scene_vis_path / "scene_depth_gray.png"
-        plt.imsave(depth_gray_path, depth_vis, cmap='gray')
+        depth_gray_path = f'{scene_vis_path}/scene_depth_gray.png'
+        plt.imsave(depth_gray_path, depth_vis[0], cmap='gray')
         
         print(f"Depth map saved: {depth_path}")
         print(f"Depth visualization saved: {depth_vis_path}")
@@ -1092,17 +1110,45 @@ def save_scene_visualization(scene_name, state, target_mesh, scene_metrics, occ_
     if hasattr(state, 'scene_mesh') and state.scene_mesh is not None:
         state.scene_mesh.export(f'{scene_vis_path}/composed_scene.obj')
     
+    # 保存 colored_scene_mesh（如果可用）
+    if visual_dict is not None and 'affordance_visual' in visual_dict:
+        colored_scene_mesh = visual_dict['affordance_visual']
+        if colored_scene_mesh is not None:
+            # 保存 colored_scene_mesh 为 OBJ 文件
+            colored_mesh_path = scene_vis_path / "colored_scene_mesh.obj"
+            colored_scene_mesh.export(str(colored_mesh_path))
+            print(f"Colored scene mesh saved: {colored_mesh_path}")
+            
+            # 渲染 colored_scene_mesh 为图片
+            try:
+                from src.vgn.detection_ptv3_implicit import render_colored_scene_mesh_with_pyvista
+                rendered_image_path = scene_vis_path / "colored_scene_mesh_rendered.png"
+                render_success = render_colored_scene_mesh_with_pyvista(
+                    colored_scene_mesh,
+                    output_path=str(rendered_image_path),
+                    width=800,
+                    height=600
+                )
+                if render_success:
+                    print(f"Colored scene mesh rendered: {rendered_image_path}")
+                else:
+                    print(f"Failed to render colored scene mesh for {scene_name}")
+            except ImportError:
+                print(f"PyVista not available, skipping colored scene mesh rendering for {scene_name}")
+            except Exception as e:
+                print(f"Error rendering colored scene mesh for {scene_name}: {e}")
+    
     # 保存点云数据（如果可用）
     if hasattr(state, 'complete_targ_pc') and state.complete_targ_pc is not None:
-        save_point_cloud_as_ply(state.complete_targ_pc, scene_vis_path / "completed_targ_pc.ply")
+        save_point_cloud_as_ply(state.complete_targ_pc, f'{scene_vis_path}/completed_targ_pc.ply')
     
     if hasattr(state, 'targ_pc') and state.targ_pc is not None:
         transformed_pc = (state.targ_pc + 0.5) * 0.3
-        save_point_cloud_as_ply(transformed_pc, scene_vis_path / "targ_pc.ply")
+        save_point_cloud_as_ply(transformed_pc, f'{scene_vis_path}/targ_pc.ply')
     
     # 保存地面真值目标点云
     gt_targ_pc, _ = trimesh.sample.sample_surface(target_mesh, count=2048)
     gt_targ_pc = (gt_targ_pc / 0.3) - 0.5
-    save_point_cloud_as_ply(gt_targ_pc, scene_vis_path / "gt_targ_pc.ply")
+    save_point_cloud_as_ply(gt_targ_pc, f'{scene_vis_path}/gt_targ_pc.ply')
     
     print(f"Visualization saved for scene {scene_name} at {scene_vis_path}")

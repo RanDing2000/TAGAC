@@ -397,6 +397,11 @@ class DatasetVoxel_PTV3_Clip(torch.utils.data.Dataset):
         self.use_complete_targ = use_complete_targ
         self.model_type = model_type
         self.debug = debug
+
+        scenes_ptv3_clip_path = raw_root / 'scenes_ptv3_clip'
+        if not scenes_ptv3_clip_path.exists():
+            scenes_ptv3_clip_path.mkdir(parents=True, exist_ok=True)
+        self.scenes_ptv3_clip_path = scenes_ptv3_clip_path
         
         self.df = read_df(raw_root)
         # self.df = read_df_filtered(raw_root)
@@ -438,134 +443,170 @@ class DatasetVoxel_PTV3_Clip(torch.utils.data.Dataset):
 
     def __getitem__(self, i):
         scene_id = self.df.loc[i, "scene_id"]
-        
+        self.curr_scene_path = self.scenes_ptv3_clip_path / f"{scene_id}.npz"
         # Add retry mechanism for incomplete scenes
-        max_retries = 10
-        for attempt in range(max_retries):
-            try:
-                return self._get_item_safe_ptv3(i, scene_id)
-            except Exception as e:
-                # Log the error
-                ERROR_LOG_FILE_PTV3_SCENE.parent.mkdir(parents=True, exist_ok=True)
-                with ERROR_LOG_FILE_PTV3_SCENE.open("a", encoding="utf-8") as f:
-                    f.write(f"{scene_id},ptv3_dataset_loading,\"attempt_{attempt+1}: {str(e)}\"\n")
-                
-                print(f"[WARNING] PTV3 Scene {scene_id} loading failed (attempt {attempt+1}/{max_retries}): {e}")
-                
-                if attempt < max_retries - 1:
-                    # Try next scene
-                    i = (i + 1) % len(self.df)
-                    scene_id = self.df.loc[i, "scene_id"]
-                else:
-                    # Final attempt failed, raise the error
-                    raise e
+        # max_retries = 10
+        # for attempt in range(max_retries):
+        try:
+            return self._get_item_safe_ptv3_clip(i, scene_id)
+        except Exception as e:
+            # Log the error
+            ERROR_LOG_FILE_PTV3_SCENE.parent.mkdir(parents=True, exist_ok=True)
+            with ERROR_LOG_FILE_PTV3_SCENE.open("a", encoding="utf-8") as f:
+                f.write(f"{scene_id},ptv3_dataset_loading,\"{str(e)}\"\n")
+            
+            print(f"[WARNING] PTV3 Scene {scene_id} loading failed: {e}")
+            
+            # if attempt < max_retries - 1:
+            #     # Try next scene
+            #     i = (i + 1) % len(self.df)
+            #     scene_id = self.df.loc[i, "scene_id"]
+            # else:
+            #     # Final attempt failed, raise the error
+            #     raise e
     
-    def _get_item_safe_ptv3(self, i, scene_id):
+    def _get_item_safe_ptv3_clip(self, i, scene_id):
+        # if self.curr_scene_path.exists():
+        #     with np.load(self.curr_scene_path, allow_pickle=True) as data:
+        #         targ_grid = data["complete_target_tsdf"]
+        #         if targ_grid.ndim == 3:
+        #             targ_grid = np.expand_dims(targ_grid, axis=0)
+        # else:
         """Safe version of __getitem__ for PTV3_Scene with proper error handling."""
         ori = Rotation.from_quat(self.df.loc[i, "qx":"qw"].to_numpy(np.single))
         pos = self.df.loc[i, "x":"z"].to_numpy(np.single)
         width =  np.float32(self.df.loc[i, "width"])
         label = self.df.loc[i, "label"].astype(np.int64)
 
-        single_scene_id = (scene_id.split('_')[0]) + '_s_' + scene_id.split('_')[2]
-        voxel_grid, targ_grid = read_voxel_and_mask_occluder(self.raw_root, scene_id)
-        occluder_grid = voxel_grid - targ_grid
-        targ_pc = read_complete_target_pc(self.raw_root, scene_id).astype(np.float32)
-        scene_path = self.raw_root / "scenes" / f"{scene_id}.npz"
-        
-        # Handle missing complete_target_tsdf with error logging and fallback
-        scene_single_path = self.raw_root / "scenes" / f"{single_scene_id}.npz"
-        try:
-            # with np.load(scene_single_path, allow_pickle=True) as data_single:
-                # targ_grid = data_single["complete_target_tsdf"]
-            with np.load(scene_path) as data:
-                targ_grid = data["complete_target_tsdf"]
-                if targ_grid.ndim == 3:
-                    targ_grid = np.expand_dims(targ_grid, axis=0)
-        except KeyError as e:
-            # Log the error to file
-            ERROR_LOG_FILE_PTV3_SCENE.parent.mkdir(parents=True, exist_ok=True)
-            with ERROR_LOG_FILE_PTV3_SCENE.open("a", encoding="utf-8") as f:
-                f.write(f"{scene_id},complete_target_tsdf_missing,\"KeyError: 'complete_target_tsdf' not found in {single_scene_id}.npz\"\n")
-            
-            print(f"[WARNING] Scene {scene_id}: complete_target_tsdf missing in {single_scene_id}.npz, using fallback strategy")
-            
-            # Fallback: use original targ_grid from read_voxel_and_mask_occluder
-            # This maintains training continuity but may have lower quality complete target data
-            pass  # targ_grid already set from read_voxel_and_mask_occluder above
-            
-        except Exception as e:
-            # Log other errors
-            ERROR_LOG_FILE_PTV3_SCENE.parent.mkdir(parents=True, exist_ok=True)
-            with ERROR_LOG_FILE_PTV3_SCENE.open("a", encoding="utf-8") as f:
-                f.write(f"{scene_id},scene_file_error,\"Error loading {single_scene_id}.npz: {str(e)}\"\n")
-            
-            print(f"[WARNING] Scene {scene_id}: Error loading {single_scene_id}.npz: {e}, using fallback strategy")
-            
-            # Fallback: use original targ_grid
-            pass  # targ_grid already set from read_voxel_and_mask_occluder above
-        
-        voxel_grid = occluder_grid + targ_grid
-
-        plane = np.load('/usr/stud/dira/GraspInClutter/grasping/setup/plane_sampled.npy')
-        if '_c_' in scene_id:
-            scene_no_targ_pc = read_scene_no_targ_pc(self.raw_root, scene_id).astype(np.float32)
-            # scene_no_targ_pc = np.concatenate((scene_no_targ_pc, plane), axis=0)
-            targ_pc = points_within_boundary(targ_pc)
-            
-            targ_pc = safe_specify_num_points(targ_pc, 512, scene_id, "ptv3_target")
-            if targ_pc is None:
-                raise ValueError(f"Failed to process PTV3 target point cloud for scene {scene_id}")
-            
-            scene_no_targ_pc = points_within_boundary(scene_no_targ_pc)
-            scene_no_targ_pc = np.concatenate((scene_no_targ_pc, plane), axis=0)
-            scene_no_targ_pc = safe_specify_num_points(scene_no_targ_pc, 512, scene_id, "ptv3_scene_no_target")
-            if scene_no_targ_pc is None:
-                raise ValueError(f"Failed to process PTV3 scene_no_target point cloud for scene {scene_id}")
-            # scene_pc = np.concatenate((scene_no_targ_pc, targ_pc))
-        elif '_s_' in scene_id:
-            scene_no_targ_pc = plane
-            targ_pc = points_within_boundary(targ_pc)
-            
-            targ_pc = safe_specify_num_points(targ_pc, 512, scene_id, "ptv3_target")
-            if targ_pc is None:
-                raise ValueError(f"Failed to process PTV3 target point cloud for scene {scene_id}")
-            
-            scene_no_targ_pc = safe_specify_num_points(scene_no_targ_pc, 512, scene_id, "ptv3_plane")
-            if scene_no_targ_pc is None:
-                raise ValueError(f"Failed to process PTV3 plane point cloud for scene {scene_id}")
-            # scene_pc = targ_pc
-            # scene_pc = specify_num_points(scene_pc, 512)
-
-        targ_pc = targ_pc /0.3- 0.5
-        scene_no_targ_pc = scene_no_targ_pc /0.3- 0.5
-        targ_pc = torch.from_numpy(targ_pc).float()
-        scene_no_targ_pc = torch.from_numpy(scene_no_targ_pc).float()
-
-        targ_labels = torch.ones((targ_pc.shape[0], 1), dtype=torch.float32)  # Target points labeled as 1
-        occluder_labels = torch.zeros((scene_no_targ_pc.shape[0], 1), dtype=torch.float32)  # Scene points labeled as 0
-        targ_pc_with_labels = torch.cat((targ_pc, targ_labels), dim=1)
-        scene_no_targ_pc_with_labels = torch.cat((scene_no_targ_pc, occluder_labels), dim=1)
-        scene_pc_with_labels = torch.cat((scene_no_targ_pc_with_labels, targ_pc_with_labels), dim=0)
-           
-        pos = pos / self.size - 0.5
-        width = width / self.size
 
         rotations = np.empty((2, 4), dtype=np.single)
         R = Rotation.from_rotvec(np.pi * np.r_[0.0, 0.0, 1.0])
         rotations[0] = ori.as_quat()
         rotations[1] = (ori * R).as_quat()
+        y = (label, rotations, width)
 
-        targ_pc_with_labels = targ_pc_with_labels.squeeze(0).numpy()
-        scene_pc_with_labels = scene_pc_with_labels.squeeze(0).numpy()
+        if self.curr_scene_path.exists():
+            scene_data = np.load(self.curr_scene_path, allow_pickle=True)
+            voxel_grid = scene_data['voxel_grid']
+            targ_grid = scene_data['targ_grid']
+            targ_pc_with_labels = scene_data['targ_pc_with_labels']
+            scene_pc_with_labels = scene_data['scene_pc_with_labels']
+            x = (voxel_grid[0], targ_grid[0], targ_pc_with_labels, scene_pc_with_labels)
 
-        x = (voxel_grid[0], targ_grid[0], targ_pc_with_labels, scene_pc_with_labels)
+            # targ_grid = scene_data["complete_target_tsdf"]
+            # if targ_grid.ndim == 3:
+            #     targ_grid = np.expand_dims(targ_grid, axis=0)
+            # voxel_grid = scene_data["voxel_grid"]
+            # occluder_grid = voxel_grid - targ_grid
+            # targ_pc = scene_data["targ_pc"]
+            # with np.load(self.curr_scene_path, allow_pickle=True) as data:
+            #     targ_grid = data["complete_target_tsdf"]
+            #     if targ_grid.ndim == 3:
+            #         targ_grid = np.expand_dims(targ_grid, axis=0)
+        else:
+            single_scene_id = (scene_id.split('_')[0]) + '_s_' + scene_id.split('_')[2]
+            voxel_grid, targ_grid = read_voxel_and_mask_occluder(self.raw_root, scene_id)
+            occluder_grid = voxel_grid - targ_grid
+            targ_pc = read_complete_target_pc(self.raw_root, scene_id).astype(np.float32)
+            scene_path = self.raw_root / "scenes" / f"{scene_id}.npz"
+            
+            # Handle missing complete_target_tsdf with error logging and fallback
+            scene_single_path = self.raw_root / "scenes" / f"{single_scene_id}.npz"
+            try:
+                # with np.load(scene_single_path, allow_pickle=True) as data_single:
+                    # targ_grid = data_single["complete_target_tsdf"]
+                with np.load(scene_path) as data:
+                    targ_grid = data["complete_target_tsdf"]
+                    if targ_grid.ndim == 3:
+                        targ_grid = np.expand_dims(targ_grid, axis=0)
+            except KeyError as e:
+                # Log the error to file
+                ERROR_LOG_FILE_PTV3_SCENE.parent.mkdir(parents=True, exist_ok=True)
+                with ERROR_LOG_FILE_PTV3_SCENE.open("a", encoding="utf-8") as f:
+                    f.write(f"{scene_id},complete_target_tsdf_missing,\"KeyError: 'complete_target_tsdf' not found in {single_scene_id}.npz\"\n")
+                
+                print(f"[WARNING] Scene {scene_id}: complete_target_tsdf missing in {single_scene_id}.npz, using fallback strategy")
+                
+                # Fallback: use original targ_grid from read_voxel_and_mask_occluder
+                # This maintains training continuity but may have lower quality complete target data
+                pass  # targ_grid already set from read_voxel_and_mask_occluder above
+                
+            except Exception as e:
+                # Log other errors
+                ERROR_LOG_FILE_PTV3_SCENE.parent.mkdir(parents=True, exist_ok=True)
+                with ERROR_LOG_FILE_PTV3_SCENE.open("a", encoding="utf-8") as f:
+                    f.write(f"{scene_id},scene_file_error,\"Error loading {single_scene_id}.npz: {str(e)}\"\n")
+                
+                print(f"[WARNING] Scene {scene_id}: Error loading {single_scene_id}.npz: {e}, using fallback strategy")
+                
+                # Fallback: use original targ_grid
+                pass  # targ_grid already set from read_voxel_and_mask_occluder above
+            
+            voxel_grid = occluder_grid + targ_grid
+
+            plane = np.load('/usr/stud/dira/GraspInClutter/grasping/setup/plane_sampled.npy')
+            if '_c_' in scene_id:
+                scene_no_targ_pc = read_scene_no_targ_pc(self.raw_root, scene_id).astype(np.float32)
+                # scene_no_targ_pc = np.concatenate((scene_no_targ_pc, plane), axis=0)
+                targ_pc = points_within_boundary(targ_pc)
+                
+                targ_pc = safe_specify_num_points(targ_pc, 512, scene_id, "ptv3_target")
+                if targ_pc is None:
+                    raise ValueError(f"Failed to process PTV3 target point cloud for scene {scene_id}")
+                
+                scene_no_targ_pc = points_within_boundary(scene_no_targ_pc)
+                scene_no_targ_pc = np.concatenate((scene_no_targ_pc, plane), axis=0)
+                scene_no_targ_pc = safe_specify_num_points(scene_no_targ_pc, 512, scene_id, "ptv3_scene_no_target")
+                if scene_no_targ_pc is None:
+                    raise ValueError(f"Failed to process PTV3 scene_no_target point cloud for scene {scene_id}")
+                # scene_pc = np.concatenate((scene_no_targ_pc, targ_pc))
+            elif '_s_' in scene_id:
+                scene_no_targ_pc = plane
+                targ_pc = points_within_boundary(targ_pc)
+                
+                targ_pc = safe_specify_num_points(targ_pc, 512, scene_id, "ptv3_target")
+                if targ_pc is None:
+                    raise ValueError(f"Failed to process PTV3 target point cloud for scene {scene_id}")
+                
+                scene_no_targ_pc = safe_specify_num_points(scene_no_targ_pc, 512, scene_id, "ptv3_plane")
+                if scene_no_targ_pc is None:
+                    raise ValueError(f"Failed to process PTV3 plane point cloud for scene {scene_id}")
+                # scene_pc = targ_pc
+                # scene_pc = specify_num_points(scene_pc, 512)
+
+            targ_pc = targ_pc /0.3- 0.5
+            scene_no_targ_pc = scene_no_targ_pc /0.3- 0.5
+            targ_pc = torch.from_numpy(targ_pc).float()
+            scene_no_targ_pc = torch.from_numpy(scene_no_targ_pc).float()
+
+            targ_labels = torch.ones((targ_pc.shape[0], 1), dtype=torch.float32)  # Target points labeled as 1
+            occluder_labels = torch.zeros((scene_no_targ_pc.shape[0], 1), dtype=torch.float32)  # Scene points labeled as 0
+            targ_pc_with_labels = torch.cat((targ_pc, targ_labels), dim=1)
+            scene_no_targ_pc_with_labels = torch.cat((scene_no_targ_pc, occluder_labels), dim=1)
+            scene_pc_with_labels = torch.cat((scene_no_targ_pc_with_labels, targ_pc_with_labels), dim=0)
+            
+            pos = pos / self.size - 0.5
+            width = width / self.size
+
+            # rotations = np.empty((2, 4), dtype=np.single)
+            # R = Rotation.from_rotvec(np.pi * np.r_[0.0, 0.0, 1.0])
+            # rotations[0] = ori.as_quat()
+            # rotations[1] = (ori * R).as_quat()
+
+            targ_pc_with_labels = targ_pc_with_labels.squeeze(0).numpy()
+            scene_pc_with_labels = scene_pc_with_labels.squeeze(0).numpy()
+
+            x = (voxel_grid[0], targ_grid[0], targ_pc_with_labels, scene_pc_with_labels)
+
+            # save path
+            save_path = self.scenes_ptv3_clip_path / f"{scene_id}.npz"
+            np.savez(save_path, voxel_grid=voxel_grid, targ_grid=targ_grid, targ_pc_with_labels=targ_pc_with_labels, scene_pc_with_labels=scene_pc_with_labels)
 
         # if self.debug:
         #     vis_path = str(self.vis_logdir / 'complete_targ_grid.png')
         #     visualize_and_save_tsdf(targ_grid[0], vis_path)
 
-        y = (label, rotations, width)
+        # y = (label, rotations, width)
 
         return x, y, pos
 
