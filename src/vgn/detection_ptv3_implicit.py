@@ -325,6 +325,78 @@ def bound(qual_vol, voxel_size, limit=[0.02, 0.02, 0.055]):
     return qual_vol
 
 
+def render_scene_with_pyvista(scene,
+                             output_path="demo/ptv3_scene_composed_visual.png",
+                             width=640, height=480):
+    """
+    Render a trimesh.Scene object using PyVista with white background, no text or colorbar.
+    """
+    try:
+        if len(scene.geometry) == 0:
+            print("Scene is empty!")
+            return False
+
+        # 创建渲染器
+        plotter = pv.Plotter(off_screen=True, window_size=(width, height))
+        
+        # 添加场景中的所有几何体
+        for name, geometry in scene.geometry.items():
+            if hasattr(geometry, 'vertices') and hasattr(geometry, 'faces'):
+                if geometry.vertices.size > 0 and geometry.faces.size > 0:
+                    # 获取 mesh 颜色
+                    face_colors = getattr(geometry.visual, "face_colors", None)
+                    
+                    # 转为 PyVista mesh
+                    faces_flat = np.hstack(
+                        np.c_[np.full(len(geometry.faces), 3),
+                              geometry.faces]
+                    ).astype(np.int64).ravel()
+                    pv_mesh = pv.PolyData(geometry.vertices, faces_flat)
+                    
+                    if face_colors is not None:
+                        pv_mesh.cell_data["colors"] = face_colors
+                        pv_mesh.cell_data.active_scalars_name = "colors"
+                    
+                    plotter.add_mesh(
+                        pv_mesh,
+                        show_edges=False,
+                        show_scalar_bar=False
+                    )
+
+        plotter.set_background("white")
+
+        # 设置相机（远视角）
+        # 计算场景的边界框
+        all_vertices = []
+        for geometry in scene.geometry.values():
+            if hasattr(geometry, 'vertices') and geometry.vertices.size > 0:
+                all_vertices.append(geometry.vertices)
+        
+        if all_vertices:
+            all_vertices = np.vstack(all_vertices)
+            center = np.mean(all_vertices, axis=0)
+            bounds = [all_vertices[:, i].min() for i in range(3)] + [all_vertices[:, i].max() for i in range(3)]
+            extent = max(bounds[1]-bounds[0], bounds[3]-bounds[2], bounds[5]-bounds[4])
+            iso_dir = np.array([1, 1, 1]) / np.sqrt(3)
+            camera_pos = center + iso_dir * extent * 4
+
+            plotter.camera.position = camera_pos.tolist()
+            plotter.camera.focal_point = list(center)
+            plotter.camera.up = [0, 0, 1]
+
+        # 渲染并保存
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        plotter.screenshot(output_path)
+        plotter.close()
+
+        return True
+
+    except Exception as e:
+        print(f"Error rendering scene with PyVista: {e}")
+        import traceback; traceback.print_exc()
+        return False
+
+
 class PTV3SceneImplicit(object):
     """
     Implicit grasp detection class specialized for ptv3_scene model type.
@@ -508,5 +580,32 @@ class PTV3SceneImplicit(object):
 
         end = time.time()
         print(f"post processing: {end-begin:.3f}s")
+
+        if visual_dict:
+            grasp_mesh_list = [visual.grasp2mesh(g, s) for g, s in zip(grasps, scores)]
+            composed_scene = trimesh.Scene(colored_scene_mesh)
+            for i, g_mesh in enumerate(grasp_mesh_list):
+                composed_scene.add_geometry(g_mesh, node_name=f'grasp_{i}')
+            visual_dict['composed_scene'] = composed_scene
+            
+            # Save composed_scene_mesh to state.vis_path directory
+            demo_composed_path = f"{state.vis_path}/ptv3_scene_composed_visual.obj"
+            composed_scene.export(demo_composed_path)
+            print(f"Saved composed scene visualization to: {demo_composed_path}")
+            
+            # Render composed scene mesh with pyvista
+            render_composed_success = render_scene_with_pyvista(
+                composed_scene, 
+                output_path=f"{state.vis_path}/ptv3_scene_composed_visual.png",
+                width=800, 
+                height=600
+            )
+            
+            if render_composed_success:
+                print("✓ Successfully rendered composed scene mesh with pyvista")
+            else:
+                print("✗ Failed to render composed scene mesh with pyvista")
+            
+            return grasps, scores, toc, composed_scene
         
         return grasps, scores, toc, cd, iou 

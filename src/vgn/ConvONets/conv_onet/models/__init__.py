@@ -97,7 +97,7 @@ class ConvolutionalOccupancyNetwork_Grid(nn.Module):
             features_fused = self.encoder_in(inputs)
         elif self.model_type == "ptv3_clip":
             # For ptv3_clip, inputs is scene_pc with CLIP features
-            features_fused = self.encoder_in(inputs)
+            features_fused = self.encoder_in(inputs[0], inputs[1])
 
         c = self.encoder_aff(features_fused)
         qual, rot, width = self.decode(p, c)   

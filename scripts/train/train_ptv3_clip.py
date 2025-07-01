@@ -13,6 +13,7 @@ import torch
 import open3d as o3d
 import time
 import os  # 添加os导入以支持环境变量设置
+# from str2bool import str2bool
 from torch.utils import tensorboard
 import torch.nn.functional as F
 from vgn.dataset_voxel import DatasetVoxel_Target, DatasetVoxel_PTV3_Clip
@@ -62,106 +63,49 @@ def str2bool(v):
         return False
     else:
         raise argparse.ArgumentTypeError('Boolean value expected.')
-
-def visualize_input_data(combined_points, epoch, step, model_type, vis_dir, use_wandb=False):
+def visualize_input_scene_data(combined_points, epoch, step, model_type, vis_dir, use_wandb=False):
     """
-    Simplified visualization function - only saves PLY files locally.
+    Simplified visualization function for scene point cloud without labels.
     
     Args:
-        combined_points: Combined point cloud tensor [B, N, 4] where last column is label (1=target, 0=occluder)
+        combined_points: Scene point cloud tensor [B, N, 3]
         epoch: Current training epoch
         step: Current training step 
-        model_type: Model type (targo_ptv3, ptv3_scene)
+        model_type: Model type (unused)
         vis_dir: Directory to save PLY files
-        use_wandb: Whether to log to wandb (ignored, kept for compatibility)
+        use_wandb: Whether to log to wandb (ignored)
     """
     if combined_points is None:
+        print("[VIS] No input provided.")
         return
         
-    # Ensure directory exists
     vis_dir = Path(vis_dir)
     vis_dir.mkdir(parents=True, exist_ok=True)
     
-    # Convert tensors to numpy for visualization (use first batch element)
+    # Get first batch
     if isinstance(combined_points, torch.Tensor):
-        combined_np = combined_points[0].detach().cpu().numpy()
+        scene_np = combined_points[0].detach().cpu().numpy()
     else:
-        combined_np = np.array(combined_points[0])
-    
-    # Split coordinates and labels
-    coords = combined_np[:, :3]  # Position coordinates
-    labels = combined_np[:, -1]  # Labels (1=target, 0=occluder)
-    
-    # Separate target and occluder points based on labels
-    target_mask = labels == 1.0
-    occluder_mask = labels == 0.0
-    
-    target_coords = coords[target_mask]
-    occluder_coords = coords[occluder_mask]
-    
-    # Print basic statistics
-    print(f"[VIS] Epoch {epoch}, Step {step} - PLY Save:")
-    print(f"[VIS] Total points: {coords.shape[0]}")
-    print(f"[VIS] Target points: {target_coords.shape[0]} ({target_coords.shape[0]/coords.shape[0]*100:.1f}%)")
-    print(f"[VIS] Occluder points: {occluder_coords.shape[0]} ({occluder_coords.shape[0]/coords.shape[0]*100:.1f}%)")
-    
-    # Save PLY files
+        scene_np = np.array(combined_points[0])
+
+    if scene_np.shape[1] != 3:
+        print(f"[VIS] Error: Expected shape [N, 3], but got {scene_np.shape}")
+        return
+
+    print(f"[VIS] Epoch {epoch}, Step {step} - Visualizing scene point cloud")
+    print(f"[VIS] Total points: {scene_np.shape[0]}")
+
     try:
-        # Occluder points (gray)
-        if len(occluder_coords) > 0:
-            occluder_pcd = o3d.geometry.PointCloud()
-            occluder_pcd.points = o3d.utility.Vector3dVector(occluder_coords)
-            occluder_pcd.paint_uniform_color([0.7, 0.7, 0.7])  # Gray for occluders
-            occluder_ply_path = vis_dir / f"occluder_epoch{epoch}_step{step}.ply"
-            o3d.io.write_point_cloud(str(occluder_ply_path), occluder_pcd)
-            print(f"[VIS] Saved occluder points: {occluder_ply_path}")
-        
-        # Target points (red)
-        if len(target_coords) > 0:
-            target_pcd = o3d.geometry.PointCloud()
-            target_pcd.points = o3d.utility.Vector3dVector(target_coords)
-            target_pcd.paint_uniform_color([1.0, 0.3, 0.3])  # Red for targets
-            target_ply_path = vis_dir / f"target_epoch{epoch}_step{step}.ply"
-            o3d.io.write_point_cloud(str(target_ply_path), target_pcd)
-            print(f"[VIS] Saved target points: {target_ply_path}")
-        
-        # Combined point cloud
-        if len(occluder_coords) > 0 and len(target_coords) > 0:
-            combined_pcd = o3d.geometry.PointCloud()
-            # Combine points with colors
-            all_coords = np.vstack([occluder_coords, target_coords])
-            all_colors = np.vstack([
-                np.tile([0.7, 0.7, 0.7], (len(occluder_coords), 1)),  # Gray for occluders
-                np.tile([1.0, 0.3, 0.3], (len(target_coords), 1))     # Red for targets
-            ])
-            combined_pcd.points = o3d.utility.Vector3dVector(all_coords)
-            combined_pcd.colors = o3d.utility.Vector3dVector(all_colors)
-            combined_ply_path = vis_dir / f"combined_epoch{epoch}_step{step}.ply"
-            o3d.io.write_point_cloud(str(combined_ply_path), combined_pcd)
-            print(f"[VIS] Saved combined points: {combined_ply_path}")
-        elif len(occluder_coords) > 0:
-            # Only occluders
-            occluder_pcd = o3d.geometry.PointCloud()
-            occluder_pcd.points = o3d.utility.Vector3dVector(occluder_coords)
-            occluder_pcd.paint_uniform_color([0.7, 0.7, 0.7])
-            combined_ply_path = vis_dir / f"combined_epoch{epoch}_step{step}.ply"
-            o3d.io.write_point_cloud(str(combined_ply_path), occluder_pcd)
-            print(f"[VIS] Saved occluder-only combined: {combined_ply_path}")
-        elif len(target_coords) > 0:
-            # Only targets
-            target_pcd = o3d.geometry.PointCloud()
-            target_pcd.points = o3d.utility.Vector3dVector(target_coords)
-            target_pcd.paint_uniform_color([1.0, 0.3, 0.3])
-            combined_ply_path = vis_dir / f"combined_epoch{epoch}_step{step}.ply"
-            o3d.io.write_point_cloud(str(combined_ply_path), target_pcd)
-            print(f"[VIS] Saved target-only combined: {combined_ply_path}")
-            
+        pcd = o3d.geometry.PointCloud()
+        pcd.points = o3d.utility.Vector3dVector(scene_np)
+        pcd.paint_uniform_color([0.3, 0.5, 1.0])  # Blueish color
+        ply_path = vis_dir / f"scene_epoch{epoch}_step{step}.ply"
+        o3d.io.write_point_cloud(str(ply_path), pcd)
+        print(f"[VIS] Saved scene point cloud: {ply_path}")
     except Exception as e:
-        print(f"[VIS] Error saving PLY files: {e}")
+        print(f"[VIS] Error saving point cloud: {e}")
         import traceback
         traceback.print_exc()
-    
-    print(f"[VIS] PLY files saved to {vis_dir}")
 
 def main(args):
     use_cuda = torch.cuda.is_available()
@@ -627,27 +571,28 @@ def create_train_val_loaders(root, root_raw, batch_size, val_split, augment, com
 
 def prepare_batch(batch, device, model_type="targo_ptv3"):
     """Prepare batch data for different model types."""
-    (pc, targ_grid, targ_pc, scene_pc), (label, rotations, width), pos = batch
+    (scene_grid, targ_grid, scene_pc, scene_clip_feat), (label, rotations, width), pos = batch
 
     # Convert to device and proper types
-    pc = pc.float().to(device)
+    # pc = pc.float().to(device)
+    # targ_grid = targ_grid.float().to(device)
+    # targ_pc = targ_pc.float().to(device)
+    # scene_pc = scene_pc.float().to(device)
+    scene_grid = scene_grid.float().to(device)
     targ_grid = targ_grid.float().to(device)
-    targ_pc = targ_pc.float().to(device)
     scene_pc = scene_pc.float().to(device)
+    scene_clip_feat = scene_clip_feat.float().to(device)
+
     label = label.float().to(device)
     rotations = rotations.float().to(device)
     width = width.float().to(device)
     pos.unsqueeze_(1)  # B, 1, 3
     pos = pos.float().to(device)
 
-    if model_type == "ptv3_clip":
-        # For ptv3_scene, scene_pc is the combined point cloud with labels [B, N, 4]
-        # where last column is binary labels (1=target, 0=occluder)
-        # This is exactly what the ptv3_scene model expects
-        return scene_pc, (label, rotations, width), pos
-    else:
-        # For targo_ptv3, return scene and target point clouds
-        return (scene_pc, targ_pc), (label, rotations, width), pos
+    assert model_type == "ptv3_clip", "Only ptv3_clip is supported for now"
+
+    return (scene_pc, scene_clip_feat), (label, rotations, width), pos
+
 
 def select(out):
     """Select outputs from model predictions."""
@@ -693,44 +638,10 @@ def create_trainer(net, sc_net, optimizer, loss_fn, metrics, device, input_point
         if sc_net is not None and not use_complete_targ:
             sc_net.eval()
         net.train()
-
         optimizer.zero_grad()
         x, y, pos = prepare_batch(batch, device, model_type)
-
-        # Only use shape completion if not using complete target data
-        if sc_net is not None and not use_complete_targ:
-            with torch.no_grad():
-                if model_type == "ptv3_clip":
-                    # For ptv3_scene, x is just scene_pc
-                    scene_points = x
-                    # Apply shape completion to scene points
-                    scene_points = sc_net(scene_points)[1].to(dtype=torch.float32)
-                    scene_points = filter_and_pad_point_clouds(scene_points)
-                    x = scene_points
-                else:
-                    # For targo_ptv3, x is (scene_pc, targ_pc)
-                    targ_points = x[1]
-                    targ_points = sc_net(targ_points)[1].to(dtype=torch.float32)
-                    targ_points = filter_and_pad_point_clouds(targ_points)
-                    scene_points = torch.cat((x[0], targ_points), dim=1)
-                    x = (scene_points, targ_points)
-
-        elif use_complete_targ:
-            # When using complete target data, the data loader already provides complete target point clouds
-            # No shape completion needed - directly use the complete target data from preprocessing
-            if model_type == "ptv3_clip":
-                # For ptv3_scene, x is already the complete scene point cloud
-                x = x
-            else:
-                # For targo_ptv3 and targo_full, x is (scene_pc, complete_targ_pc)
-                scene_points, targ_points = x
-                scene_points = filter_and_pad_point_clouds(scene_points.unsqueeze(0) if len(scene_points.shape) == 2 else scene_points, N=512)
-                targ_points = filter_and_pad_point_clouds(targ_points.unsqueeze(0) if len(targ_points.shape) == 2 else targ_points)
-                # Combine scene and complete target point clouds
-                combined_scene = torch.cat((scene_points, targ_points), dim=1)
-                x = (combined_scene, targ_points)
-                
-        # Enhanced visualization with periodic saving based on arguments
+        assert model_type == "ptv3_clip", "Only ptv3_clip is supported for now"
+        x = x
         current_step = _.state.iteration if hasattr(_, 'state') and hasattr(_.state, 'iteration') else 0
         current_epoch = _.state.epoch if hasattr(_, 'state') and hasattr(_.state, 'epoch') else 0
         
@@ -747,7 +658,7 @@ def create_trainer(net, sc_net, optimizer, loss_fn, metrics, device, input_point
                 # For visualization, we need the combined scene data (x)
                 if model_type == "ptv3_clip":
                     # For ptv3_scene, x is the combined point cloud with labels [N, 4]
-                    combined_points = x
+                    combined_points = x[0]
                     print(f"[VIS] ptv3_scene - visualizing combined scene data: {combined_points.shape}")
                 else:
                     # For targo_ptv3, x is (combined_scene, targ_points)
@@ -764,7 +675,7 @@ def create_trainer(net, sc_net, optimizer, loss_fn, metrics, device, input_point
                 try:
                     print(f"[INFO] Visualizing input data at epoch {current_epoch}, step {current_step}")
                     print(f"[INFO] Model type: {model_type}, Input shape: {combined_points.shape}")
-                    visualize_input_data(
+                    visualize_input_scene_data(
                         combined_points, 
                         current_epoch, current_step, 
                         model_type, vis_dir, 
@@ -1092,7 +1003,7 @@ if __name__ == "__main__":
     parser.add_argument("--load-path", type=str, default='')
     parser.add_argument("--vis_data", type=str2bool, default=False, help="whether to visualize the dataset")
     parser.add_argument("--complete_shape", type=str2bool, default=True, help="use the complete the TSDF for grasp planning")
-    parser.add_argument("--ablation_dataset", type=str, default='', help="1_10| 1_100| 1_100000| no_single_double | only_single_double|resized_set_theory|only_cluttered")
+    parser.add_argument("--ablation_dataset", type=str, default='1_10', help="1_10| 1_100| 1_100000| no_single_double | only_single_double|resized_set_theory|only_cluttered")
     parser.add_argument("--targ_grasp", type=str2bool, default=False, help="If true, use the target grasp mode, else use the clutter removal mode")
     parser.add_argument("--set_theory", type=str2bool, default=True, help="If true, use the target grasp mode, else use the clutter removal mode")
     parser.add_argument("--use_complete_targ", type=str2bool, default=True, help="If true, use complete target mesh from preprocessed data")
@@ -1179,3 +1090,104 @@ if __name__ == "__main__":
     print(f"\nLog directory: {args.logdir}")
 
     main(args)
+
+
+def visualize_input_data(combined_points, epoch, step, model_type, vis_dir, use_wandb=False):
+    """
+    Simplified visualization function - only saves PLY files locally.
+    
+    Args:
+        combined_points: Combined point cloud tensor [B, N, 4] where last column is label (1=target, 0=occluder)
+        epoch: Current training epoch
+        step: Current training step 
+        model_type: Model type (targo_ptv3, ptv3_scene)
+        vis_dir: Directory to save PLY files
+        use_wandb: Whether to log to wandb (ignored, kept for compatibility)
+    """
+    if combined_points is None:
+        return
+        
+    # Ensure directory exists
+    vis_dir = Path(vis_dir)
+    vis_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Convert tensors to numpy for visualization (use first batch element)
+    if isinstance(combined_points, torch.Tensor):
+        combined_np = combined_points[0].detach().cpu().numpy()
+    else:
+        combined_np = np.array(combined_points[0])
+    
+    # Split coordinates and labels
+    coords = combined_np[:, :3]  # Position coordinates
+    labels = combined_np[:, -1]  # Labels (1=target, 0=occluder)
+    
+    # Separate target and occluder points based on labels
+    target_mask = labels == 1.0
+    occluder_mask = labels == 0.0
+    
+    target_coords = coords[target_mask]
+    occluder_coords = coords[occluder_mask]
+    
+    # Print basic statistics
+    print(f"[VIS] Epoch {epoch}, Step {step} - PLY Save:")
+    print(f"[VIS] Total points: {coords.shape[0]}")
+    print(f"[VIS] Target points: {target_coords.shape[0]} ({target_coords.shape[0]/coords.shape[0]*100:.1f}%)")
+    print(f"[VIS] Occluder points: {occluder_coords.shape[0]} ({occluder_coords.shape[0]/coords.shape[0]*100:.1f}%)")
+    
+    # Save PLY files
+    try:
+        # Occluder points (gray)
+        if len(occluder_coords) > 0:
+            occluder_pcd = o3d.geometry.PointCloud()
+            occluder_pcd.points = o3d.utility.Vector3dVector(occluder_coords)
+            occluder_pcd.paint_uniform_color([0.7, 0.7, 0.7])  # Gray for occluders
+            occluder_ply_path = vis_dir / f"occluder_epoch{epoch}_step{step}.ply"
+            o3d.io.write_point_cloud(str(occluder_ply_path), occluder_pcd)
+            print(f"[VIS] Saved occluder points: {occluder_ply_path}")
+        
+        # Target points (red)
+        if len(target_coords) > 0:
+            target_pcd = o3d.geometry.PointCloud()
+            target_pcd.points = o3d.utility.Vector3dVector(target_coords)
+            target_pcd.paint_uniform_color([1.0, 0.3, 0.3])  # Red for targets
+            target_ply_path = vis_dir / f"target_epoch{epoch}_step{step}.ply"
+            o3d.io.write_point_cloud(str(target_ply_path), target_pcd)
+            print(f"[VIS] Saved target points: {target_ply_path}")
+        
+        # Combined point cloud
+        if len(occluder_coords) > 0 and len(target_coords) > 0:
+            combined_pcd = o3d.geometry.PointCloud()
+            # Combine points with colors
+            all_coords = np.vstack([occluder_coords, target_coords])
+            all_colors = np.vstack([
+                np.tile([0.7, 0.7, 0.7], (len(occluder_coords), 1)),  # Gray for occluders
+                np.tile([1.0, 0.3, 0.3], (len(target_coords), 1))     # Red for targets
+            ])
+            combined_pcd.points = o3d.utility.Vector3dVector(all_coords)
+            combined_pcd.colors = o3d.utility.Vector3dVector(all_colors)
+            combined_ply_path = vis_dir / f"combined_epoch{epoch}_step{step}.ply"
+            o3d.io.write_point_cloud(str(combined_ply_path), combined_pcd)
+            print(f"[VIS] Saved combined points: {combined_ply_path}")
+        elif len(occluder_coords) > 0:
+            # Only occluders
+            occluder_pcd = o3d.geometry.PointCloud()
+            occluder_pcd.points = o3d.utility.Vector3dVector(occluder_coords)
+            occluder_pcd.paint_uniform_color([0.7, 0.7, 0.7])
+            combined_ply_path = vis_dir / f"combined_epoch{epoch}_step{step}.ply"
+            o3d.io.write_point_cloud(str(combined_ply_path), occluder_pcd)
+            print(f"[VIS] Saved occluder-only combined: {combined_ply_path}")
+        elif len(target_coords) > 0:
+            # Only targets
+            target_pcd = o3d.geometry.PointCloud()
+            target_pcd.points = o3d.utility.Vector3dVector(target_coords)
+            target_pcd.paint_uniform_color([1.0, 0.3, 0.3])
+            combined_ply_path = vis_dir / f"combined_epoch{epoch}_step{step}.ply"
+            o3d.io.write_point_cloud(str(combined_ply_path), target_pcd)
+            print(f"[VIS] Saved target-only combined: {combined_ply_path}")
+            
+    except Exception as e:
+        print(f"[VIS] Error saving PLY files: {e}")
+        import traceback
+        traceback.print_exc()
+    
+    print(f"[VIS] PLY files saved to {vis_dir}")
