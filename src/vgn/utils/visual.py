@@ -18,6 +18,75 @@ from vgn.utils.implicit import as_mesh
 #########
 cmap = plt.get_cmap('Reds')
 
+def affordance_visual_v2(qual_vol,
+                        rot_vol,
+                        scene_mesh,
+                        size=0.3,
+                        resolution=40,
+                        th=0.005,
+                        temp=150,
+                        rad=0.02,
+                        finger_depth=0.05,
+                        finger_offset=0.5,
+                        move_center=True,
+                        aggregation='max'):
+    # Transform voxel grid into point cloud
+    x = np.linspace(0, size, num=resolution)
+    y = np.linspace(0, size, num=resolution)
+    z = np.linspace(0, size, num=resolution)
+    X, Y, Z = np.meshgrid(x, y, z)
+    grid = np.stack((Y, X, Z), axis=-1)
+
+    if move_center:
+        z_axis = np.stack([
+            2 * rot_vol[:, :, :, 0] * rot_vol[:, :, :, 2] +
+            2 * rot_vol[:, :, :, 1] * rot_vol[:, :, :, 3],
+            2 * rot_vol[:, :, :, 1] * rot_vol[:, :, :, 2] -
+            2 * rot_vol[:, :, :, 0] * rot_vol[:, :, :, 3],
+            1 - 2 * rot_vol[:, :, :, 0] * rot_vol[:, :, :, 0] -
+            2 * rot_vol[:, :, :, 1] * rot_vol[:, :, :, 1]
+        ], axis=-1)
+        grid += z_axis * finger_depth * finger_offset
+
+    grid = grid[qual_vol > th]
+    if grid.shape[0] <= 0:
+        return scene_mesh
+    qual_vol = qual_vol[qual_vol > th]
+    pc_coordinate = np.reshape(grid, (-1, 3))
+    pc_vector = np.expand_dims(np.reshape(qual_vol, (-1, )), axis=1)
+    qual_pc = np.concatenate((pc_coordinate, pc_vector), axis=1)
+
+    mesh = scene_mesh.copy()
+    triangles_center = mesh.triangles_center
+    centers = np.reshape(triangles_center, (triangles_center.shape[0], 1, 3))
+    qual_pc_coords = np.reshape(qual_pc[:, 0:3], (1, -1, 3))
+    diff = centers - qual_pc_coords
+    dist = np.sqrt((diff**2).sum(axis=-1))
+
+    if aggregation == 'mean':
+        weight = np.exp(-dist * temp)
+        affordance = weight.dot(qual_pc[:, 3]) / weight.sum(axis=-1)
+    elif aggregation == 'max':
+        mask = dist <= rad
+        affordance = mask * qual_pc[:, 3][np.newaxis]
+        affordance = affordance.max(axis=1)
+    elif aggregation == 'softmax':
+        mask = dist <= rad
+        affordance_mask = mask * qual_pc[:, 3][np.newaxis]
+        affordance_mask[np.logical_not(mask)] = -1e10
+        weight = np.exp(affordance_mask * temp)
+        affordance = weight.dot(qual_pc[:, 3]) / (weight.sum(axis=-1) + 1e-5)
+
+    affordance = np.clip(affordance, a_min=th, a_max=1)
+    affordance = (affordance - th) / (1 - th)
+
+    # 🔴 Colormap and nonlinear transformation
+    cmap = plt.get_cmap('hot')  # Use warm color map
+    colors = cmap(np.power(affordance, grid.max()))  # Enhance contrast for low values
+
+    mesh.visual.face_colors = colors
+    return mesh
+
 
 def affordance_visual(qual_vol,
                       rot_vol,
@@ -25,6 +94,7 @@ def affordance_visual(qual_vol,
                       size=0.3,
                       resolution=40,
                       th=0.5,
+                    #   th=0.1,
                       temp=150,
                       rad=0.02,
                       finger_depth=0.05,

@@ -525,7 +525,7 @@ class PTV3SceneImplicit(object):
         qual_vol = bound(qual_vol, voxel_size)
 
         if self.visualize:
-            colored_scene_mesh = visual.affordance_visual(qual_vol, rot_vol, scene_mesh, size, self.resolution, **aff_kwargs)
+            colored_scene_mesh = visual.affordance_visual_v2(qual_vol, rot_vol, scene_mesh, size, self.resolution, **aff_kwargs)
             visual_dict['affordance_visual'] = colored_scene_mesh
             
             # Save colored_scene_mesh to demo directory
@@ -606,6 +606,221 @@ class PTV3SceneImplicit(object):
             else:
                 print("✗ Failed to render composed scene mesh with pyvista")
             
-            return grasps, scores, toc, composed_scene
+            # return grasps, scores, toc, composed
+        
+        return grasps, scores, toc, cd, iou 
+
+
+
+class PTV3ClipImplicit(object):
+    """
+    Implicit grasp detection class specialized for ptv3_scene model type.
+    This class directly uses preprocessed complete target point clouds and TSDF data.
+    """
+    
+    def __init__(self, model_path, model_type, best=False, force_detection=False, 
+                 qual_th=0.9, out_th=0.5, visualize=False, resolution=40, 
+                 cd_iou_measure=False, **kwargs):
+        """
+        Initialize PTV3SceneImplicit detector.
+        
+        Args:
+            model_path: path to the trained model
+            model_type: must be 'ptv3_scene'
+            best: whether to return only the best grasp
+            force_detection: whether to force detection even with low quality
+            qual_th: quality threshold for grasp selection
+            out_th: output threshold for processing
+            visualize: whether to enable visualization
+            resolution: voxel grid resolution
+            cd_iou_measure: whether to measure Chamfer Distance and IoU
+        """
+        assert model_type == 'ptv3_clip', f"PTV3SceneImplicit only supports ptv3_clip model type, got {model_type}"
+        
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.net = load_network(model_path, self.device, model_type=model_type) 
+        self.net = self.net.eval()
+        
+        net_params_count = sum(p.numel() for p in self.net.parameters())
+        print(f"Number of parameters in self.net: {net_params_count}")
+        
+        self.qual_th = qual_th
+        self.best = best
+        self.force_detection = force_detection
+        self.out_th = out_th
+        self.visualize = visualize
+        self.resolution = resolution
+        self.cd_iou_measure = cd_iou_measure
+        
+        # Create position tensor for query points
+        x, y, z = torch.meshgrid(
+            torch.linspace(start=-0.5, end=0.5 - 1.0 / self.resolution, steps=self.resolution), 
+            torch.linspace(start=-0.5, end=0.5 - 1.0 / self.resolution, steps=self.resolution), 
+            torch.linspace(start=-0.5, end=0.5 - 1.0 / self.resolution, steps=self.resolution)
+        )
+        pos = torch.stack((x, y, z), dim=-1).float().unsqueeze(0).to(self.device)   
+        self.pos = pos.view(1, self.resolution * self.resolution * self.resolution, 3)
+
+        # Load plane points
+        plane = np.load("/usr/stud/dira/GraspInClutter/grasping/setup/plane_sampled.npy")
+        plane = plane.astype(np.float32)
+        self.plane = plane / 0.3 - 0.5
+
+    def __call__(self, state, scene_mesh=None, visual_dict=None, hunyun2_path=None, 
+                 scene_name=None, cd_iou_measure=False, target_mesh_gt=None, aff_kwargs={}):
+        """
+        Perform grasp detection on the given state.
+        
+        Args:
+            state: state object containing scene data and preprocessed complete target data
+                   Expected attributes: scene_no_targ_pc, targ_pc, complete_target_pc, complete_target_tsdf
+            scene_mesh: scene mesh for visualization (optional)
+            visual_dict: dictionary for visualization data (optional)
+            hunyun2_path: path for hunyun2 data (unused for ptv3_scene)
+            scene_name: scene name (optional)
+            cd_iou_measure: whether to measure CD and IoU
+            target_mesh_gt: ground truth target mesh (optional, used as fallback)
+            aff_kwargs: affordance visualization arguments
+            
+        Returns:
+            grasps, scores, inference_time, cd, iou
+        """
+        assert state.type == 'ptv3_scene', f"PTV3SceneImplicit only supports ptv3_scene model type, got {state.type}"
+        
+        visual_dict = {} if visual_dict is None else visual_dict
+        print(state.__dict__.keys())
+
+        # Handle ptv3_scene input format
+        scene_no_targ_pc = state.scene_no_targ_pc
+        scene_no_targ_pc = np.concatenate((scene_no_targ_pc, self.plane), axis=0)
+
+        scene_no_targ_pc =specify_num_points(scene_no_targ_pc, 512)
+
+        complete_targ_pc = state.complete_targ_pc
+        complete_targ_pc = specify_num_points(complete_targ_pc, 512)
+
+        full_scene_pc = np.concatenate((scene_no_targ_pc, complete_targ_pc), axis=0)
+        scene_labels = np.zeros((len(scene_no_targ_pc), 1), dtype=np.float32)
+        target_labels = np.ones((len(complete_targ_pc), 1), dtype=np.float32)
+        scene_with_labels = np.concatenate([scene_no_targ_pc, scene_labels], axis=1)
+        target_with_labels = np.concatenate([complete_targ_pc, target_labels], axis=1)
+        full_scene_with_labels = np.concatenate([scene_with_labels, target_with_labels], axis=0)
+        inputs = (full_scene_with_labels, None)
+
+        # save_point_cloud_as_ply(full_scene_with_labels[:, :3], 'full_scene_with_labels.ply')
+        
+        voxel_size, size = state.tsdf.voxel_size, state.tsdf.size
+        
+        # Predict using ptv3_scene model with preprocessed complete target data
+        with torch.no_grad():
+            qual_vol, rot_vol, width_vol, completed_targ_grid, cd, iou = predict_ptv3_scene(
+                inputs, self.pos, self.net, self.device, 
+                visual_dict, state, target_mesh_gt
+            )
+
+        begin = time.time()
+
+        # Reshape prediction volumes
+        qual_vol = qual_vol.reshape((self.resolution, self.resolution, self.resolution))
+        rot_vol = rot_vol.reshape((self.resolution, self.resolution, self.resolution, 4))
+        width_vol = width_vol.reshape((self.resolution, self.resolution, self.resolution))
+
+        # Process predictions with completed target grid
+        if isinstance(completed_targ_grid, np.ndarray):
+            # For numpy array: reshape from (40,40,40) to (1,40,40,40)
+            completed_targ_grid = np.expand_dims(completed_targ_grid, axis=0)
+        else:
+            # For torch tensor: use squeeze and unsqueeze
+            completed_targ_grid = completed_targ_grid.squeeze().unsqueeze(0)  # from (40,40,40) to (1,40,40,40)
+        
+        qual_vol, rot_vol, width_vol = process(completed_targ_grid, qual_vol, rot_vol, width_vol, out_th=self.out_th)
+        
+        if len(qual_vol.shape) == 1:
+            qual_vol = qual_vol.reshape((self.resolution, self.resolution, self.resolution))
+        qual_vol = bound(qual_vol, voxel_size)
+
+        if self.visualize:
+            colored_scene_mesh = visual.affordance_visual_v2(qual_vol, rot_vol, scene_mesh, size, self.resolution, **aff_kwargs)
+            visual_dict['affordance_visual'] = colored_scene_mesh
+            
+            # Save colored_scene_mesh to demo directory
+            # if not os.path.exists('demo'):
+            #     os.makedirs('demo')
+            
+            demo_affordance_path = f"{state.vis_path}/ptv3_scene_affordance_visual.obj"
+            colored_scene_mesh.export(demo_affordance_path)
+            print(f"Saved affordance visualization to demo: {demo_affordance_path}")
+            
+            # Render colored scene mesh with pyrender
+            render_success = render_colored_scene_mesh_with_pyvista(
+                colored_scene_mesh, 
+                output_path=f"{state.vis_path}/ptv3_scene_affordance_visual.png",
+                width=800, 
+                height=600, 
+                # camera_distance=0.5
+            )
+            
+            if render_success:
+                print("✓ Successfully rendered colored scene mesh with pyrender")
+            else:
+                print("✗ Failed to render colored scene mesh with pyrender")
+
+        # Select grasps from prediction volumes
+        grasps, scores = select(
+            qual_vol.copy(), 
+            self.pos.view(self.resolution, self.resolution, self.resolution, 3).cpu(), 
+            rot_vol, width_vol, 
+            threshold=self.qual_th, 
+            force_detection=self.force_detection, 
+            max_filter_size=8 if self.visualize else 4
+        )
+
+        toc = time.time()
+        grasps, scores = np.asarray(grasps), np.asarray(scores)
+
+        # Transform grasps to world coordinates
+        new_grasps = []
+        if len(grasps) > 0:
+            if self.best:
+                p = np.arange(len(grasps))
+            else:
+                p = np.random.permutation(len(grasps))
+            for g in grasps[p]:
+                pose = g.pose
+                pose.translation = (pose.translation + 0.5) * size
+                width = g.width * size
+                new_grasps.append(Grasp(pose, width))
+            scores = scores[p]
+        grasps = new_grasps
+
+        end = time.time()
+        print(f"post processing: {end-begin:.3f}s")
+
+        if visual_dict:
+            grasp_mesh_list = [visual.grasp2mesh(g, s) for g, s in zip(grasps, scores)]
+            composed_scene = trimesh.Scene(colored_scene_mesh)
+            for i, g_mesh in enumerate(grasp_mesh_list):
+                composed_scene.add_geometry(g_mesh, node_name=f'grasp_{i}')
+            visual_dict['composed_scene'] = composed_scene
+            
+            # Save composed_scene_mesh to state.vis_path directory
+            demo_composed_path = f"{state.vis_path}/ptv3_scene_composed_visual.obj"
+            composed_scene.export(demo_composed_path)
+            print(f"Saved composed scene visualization to: {demo_composed_path}")
+            
+            # Render composed scene mesh with pyvista
+            render_composed_success = render_scene_with_pyvista(
+                composed_scene, 
+                output_path=f"{state.vis_path}/ptv3_scene_composed_visual.png",
+                width=800, 
+                height=600
+            )
+            
+            if render_composed_success:
+                print("✓ Successfully rendered composed scene mesh with pyvista")
+            else:
+                print("✗ Failed to render composed scene mesh with pyvista")
+            
+            # return grasps, scores, toc, composed
         
         return grasps, scores, toc, cd, iou 

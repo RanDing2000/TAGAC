@@ -155,6 +155,8 @@ def run(
             allow_pickle=True
         )["pc"]
 
+        acronym_scene_category_dict = json.load(open('/usr/stud/dira/GraspInClutter/targo/targo_eval_results/stastics_analysis/acronym_prompt_dict.json'))
+
         # Place objects
         for obj_id, mesh_info in enumerate(mp_data.item().values()):
             pose = Transform.from_matrix(mesh_info[2])
@@ -211,6 +213,7 @@ def run(
             if obj_id == tgt_id:
                 body.set_color(link_index=-1, rgba_color=(1.0, 0.0, 0.0, 1.0))
                 targ_name = urdf_path.split('/')[-1].split('.')[0]
+                target_category = acronym_scene_category_dict[targ_name]
                 target_mesh_gt = tri_mesh
         
         end_time = time.time()
@@ -276,6 +279,41 @@ def run(
         #         "cd": float(cd),
         #         "iou": float(iou)
         #     }
+
+        elif model_type == 'ptv3_clip':
+            try:
+                tsdf, timings["integration"], scene_no_targ_pc, complete_targ_pc, complete_targ_tsdf, targ_grid, occ_level, iou_value, cd_value, vis_dict = \
+                sim.acquire_single_tsdf_target_grid_ptv3_clip(
+                    path_to_npz,
+                    tgt_id,
+                    40,
+                    model_type,  
+                    curr_mesh_pose_list=scene_name,
+                    hunyuan3D_ptv3=hunyuan3D_ptv3,
+                    hunyuan3D_path=hunyuan3D_path,
+                    target_category=target_category,
+                )
+                vis_path = f'{logdir}/scene_vis/{scene_name}'
+                os.makedirs(vis_path, exist_ok=True)
+                state = argparse.Namespace(
+                        tsdf=tsdf,
+                        scene_no_targ_pc=scene_no_targ_pc,
+                        complete_targ_pc=complete_targ_pc,
+                        complete_targ_tsdf=complete_targ_tsdf,
+                        targ_grid=targ_grid,
+                        occ_level=occ_level,
+                        type=model_type,
+                        # vis_path=vis_path,
+                        iou=iou_value,
+                        cd=cd_value,
+                        vis_dict=vis_dict,
+                        vis_path=vis_path
+                    )
+            except Exception as e:
+                print(f"ERROR: Data corruption in scene {scene_name}: {str(e)}")
+                print(f"Skipping scene {scene_name}...")
+                continue
+
         elif model_type == 'ptv3_scene':
             try:
                 tsdf, timings["integration"], scene_no_targ_pc, complete_targ_pc, complete_targ_tsdf, targ_grid, occ_level, iou_value, cd_value, vis_dict = \
