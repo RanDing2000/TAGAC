@@ -18,6 +18,88 @@ from vgn.utils.implicit import as_mesh
 #########
 cmap = plt.get_cmap('Reds')
 
+def affordance_visual_v3(qual_vol,
+                         rot_vol,
+                         scene_mesh,
+                         size=0.3,
+                         resolution=40,
+                         th=0.2,
+                         temp=150,
+                         rad=0.02,
+                         finger_depth=0.05,
+                         finger_offset=0.5,
+                         move_center=True,
+                         aggregation='max',
+                         cmap_name='hot'):
+    """
+    Render scene_mesh with per-triangle affordance heat-map.
+
+    Args
+    ----
+    qual_vol, rot_vol : np.ndarray
+        Voxelized quality scores & quaternions (shape = [res,res,res,…]).
+    scene_mesh        : trimesh.Trimesh
+    ...
+    cmap_name         : str
+        Any Matplotlib colormap name (e.g. 'hot', 'coolwarm', 'jet').
+    """
+    # --- 同 v2 ---
+    x = np.linspace(0, size, num=resolution)
+    y = np.linspace(0, size, num=resolution)
+    z = np.linspace(0, size, num=resolution)
+    X, Y, Z = np.meshgrid(x, y, z)
+    grid = np.stack((Y, X, Z), axis=-1)
+
+    if move_center:
+        z_axis = np.stack([
+            2 * rot_vol[..., 0] * rot_vol[..., 2] +
+            2 * rot_vol[..., 1] * rot_vol[..., 3],
+            2 * rot_vol[..., 1] * rot_vol[..., 2] -
+            2 * rot_vol[..., 0] * rot_vol[..., 3],
+            1 - 2 * rot_vol[..., 0] ** 2 - 2 * rot_vol[..., 1] ** 2
+        ], axis=-1)
+        grid += z_axis * finger_depth * finger_offset
+
+    mask_keep = qual_vol > th
+    if not mask_keep.any():
+        return scene_mesh  # nothing to show
+
+    grid       = grid[mask_keep]
+    qual_kept  = qual_vol[mask_keep]
+
+    pc_coord   = grid.reshape(-1, 3)
+    pc_q       = qual_kept.reshape(-1, 1)
+    qual_pc    = np.hstack((pc_coord, pc_q))
+
+    mesh       = scene_mesh.copy()
+    centers    = mesh.triangles_center[:, None, :]       # [F,1,3]
+    diffs      = centers - qual_pc[None, :, :3]          # [F,N,3]
+    dists      = np.linalg.norm(diffs, axis=-1)          # [F,N]
+
+    if aggregation == 'mean':
+        w = np.exp(-dists * temp)
+        affordance = (w @ qual_pc[:, 3]) / (w.sum(axis=1) + 1e-8)
+    elif aggregation == 'max':
+        affordance = (dists <= rad) * qual_pc[:, 3]
+        affordance = affordance.max(axis=1)
+    elif aggregation == 'softmax':
+        m = (dists <= rad)
+        a = m * qual_pc[:, 3] + (~m) * -1e10
+        w = np.exp(a * temp)
+        affordance = (w @ qual_pc[:, 3]) / (w.sum(axis=1) + 1e-8)
+
+    # --- 颜色（v3 改动处） ---------------------------------------------
+    affordance = np.clip(affordance, th, 1.0)
+    affordance = (affordance - th) / (1.0 - th)          # [0,1]
+
+    aff_norm   = affordance / (affordance.max() + 1e-8)  # 最高值 → 1
+    cmap       = plt.get_cmap(cmap_name)
+    colors     = cmap(aff_norm)                          # RGBA ∈ [0,1]
+    mesh.visual.face_colors = colors
+    # ---------------------------------------------------------------
+
+    return mesh
+
 def affordance_visual_v2(qual_vol,
                         rot_vol,
                         scene_mesh,

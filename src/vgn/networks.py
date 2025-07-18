@@ -18,6 +18,8 @@ def get_network(name):
         "targo_ptv3": TARGOPtv3Net,
         "ptv3_scene": Ptv3SceneNet,
         "ptv3_clip": Ptv3ClipNet,
+        "ptv3_clip_gt": Ptv3ClipNet,
+        "ptv3_scene_gt": Ptv3SceneNet,
     }
     return models[name.lower()]()
 

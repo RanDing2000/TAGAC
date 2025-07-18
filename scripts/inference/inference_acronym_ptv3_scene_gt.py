@@ -10,8 +10,8 @@ import numpy as np
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# Grasp planner modules - 专门使用PTV3SceneImplicit
-from src.vgn.detection_ptv3_implicit import PTV3ClipImplicit
+# Grasp planner modules - 专门使用PTV3SceneGTImplicit
+from src.vgn.detection_ptv3_implicit import PTV3SceneGTImplicit
 
 # Only keep target_sample_offline
 from src.vgn.experiments import target_sample_offline_acronym   
@@ -39,7 +39,9 @@ def create_and_write_args_to_result_path(args):
     Create a result directory for ptv3_scene model results on ACRONYM dataset.
     Then write the command-line arguments to a text file in that directory.
     """
-    model_name = 'ptv3_clip'
+    model_name = 'ptv3_scene_gt'
+    if args.high_res:
+        model_name += '_hr'
     result_directory = f'{args.result_root}/{model_name}'
     if not os.path.exists(result_directory):
         os.makedirs(result_directory)
@@ -68,18 +70,19 @@ def create_and_write_args_to_result_path(args):
 
 def main(args):
     """
-    Main entry point: creates the PTV3SceneImplicit grasp planner, then runs target_sample_offline for ACRONYM.
+    Main entry point: creates the PTV3SceneGTImplicit grasp planner, then runs target_sample_offline for ACRONYM.
     """
     print("=" * 60)
     print("PTV3 SCENE INFERENCE ON ACRONYM DATASET")
     print("=" * 60)
-    print(f"Model type: ptv3_clip (fixed)")
+    print(f"Model type: ptv3_scene_gt (fixed)")
     print(f"Model path: {args.model}")
     print(f"Occlusion level: {args.occlusion_level}")
     print(f"Test root: {args.test_root}")
     print(f"Shape completion: {args.shape_completion}")
     if args.shape_completion:
         print(f"SC model path: {args.sc_model_path}")
+    print(f"High resolution: {args.high_res} (resolution: {60 if args.high_res else 40})")
     print(f"Hunyuan3D enabled: {args.hunyuan3D_ptv3}")
     if args.hunyuan3D_ptv3:
         print(f"Hunyuan3D path: {args.hunyuan3D_path}")
@@ -87,10 +90,11 @@ def main(args):
         print("Using complete geometry objects")
     print("=" * 60)
     
-    # Create PTV3SceneImplicit grasp planner (专门为ptv3_clip设计)
-    grasp_planner = PTV3ClipImplicit(
+    # Create PTV3SceneGTImplicit grasp planner (专门为ptv3_scene设计)
+    resolution = 60 if args.high_res else 40
+    grasp_planner = PTV3SceneGTImplicit(
         args.model,
-        'ptv3_clip',  # 固定使用ptv3_clip  
+        'ptv3_scene_gt',  # 固定使用ptv3_scene_gt
         best=args.best,
         qual_th=args.qual_th,
         force_detection=args.force,
@@ -99,12 +103,13 @@ def main(args):
         visualize=args.vis,
         sc_model_path=args.sc_model_path if args.shape_completion else None,
         cd_iou_measure=True,
+        resolution=resolution,
     )
     
     result_path = create_and_write_args_to_result_path(args)
     args.result_path = result_path
     
-    print(f"\nStarting PTV3 CLIP inference on {args.occlusion_level} occlusion ACRONYM dataset...")
+    print(f"\nStarting PTV3 Scene inference on {args.occlusion_level} occlusion ACRONYM dataset...")
     print(f"Result path: {result_path}")
     
     # Run target_sample_offline evaluation for ACRONYM (与训练脚本保持一致的调用方式)
@@ -120,13 +125,14 @@ def main(args):
         add_noise=None,
         sideview=args.sideview,
         visualize=args.vis,
-        type='ptv3_clip',  # 确保类型一致
+        type='ptv3_scene_gt',  # 确保类型一致
         test_root=args.test_root,
         occ_level_dict_path=args.occ_level_dict,
         hunyun2_path=args.hunyun2_path,
+        resolution=resolution,
         hunyuan3D_ptv3=args.hunyuan3D_ptv3,
         hunyuan3D_path=args.hunyuan3D_path,
-        model_type='ptv3_clip',  # 确保模型类型一致
+        model_type='ptv3_scene_gt',  # 确保模型类型一致
         video_recording=args.video_recording,
         target_file_path=args.target_file,
         max_scenes=args.max_scenes if hasattr(args, 'max_scenes') else 0,  # 支持限制场景数量
@@ -155,16 +161,16 @@ def main(args):
         print("====== Category analysis completed ======\n")
     
     print("=" * 60)
-    print("PTV3 CLIP INFERENCE ON ACRONYM COMPLETED")
+    print("PTV3 SCENE INFERENCE ON ACRONYM COMPLETED")
     print("=" * 60)
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="PTV3 CLIP Inference on ACRONYM Dataset")
+    parser = argparse.ArgumentParser(description="PTV3 Scene Inference on ACRONYM Dataset")
 
-    # Model configuration (simplified for ptv3_clip only)
-    parser.add_argument("--model", type=Path, default='checkpoints/ptv3_clip.pt',
-                        help="Path to the ptv3_clip model checkpoint")
+    # Model configuration (simplified for ptv3_scene_gt only)
+    parser.add_argument("--model", type=Path, default='checkpoints/ptv3_scene.pt',
+                        help="Path to the ptv3_scene model checkpoint")
     parser.add_argument("--shape_completion", type=str2bool, default=False,
                         help="Whether to use shape completion during inference")
     parser.add_argument("--sc_model_path", type=str, default=None,
@@ -179,14 +185,16 @@ if __name__ == "__main__":
                         help="Path to occlusion level dictionary JSON file")
     
     # Inference parameters
-    parser.add_argument("--out_th", type=float, default=0.6,
+    parser.add_argument("--out_th", type=float, default=0.4,
                         help="Output threshold for valid grasps.")
-    parser.add_argument("--qual-th", type=float, default=0.9,
+    parser.add_argument("--qual-th", type=float, default=0.5,
                         help="Quality threshold for valid grasps.")
-    parser.add_argument("--best", type=str2bool, default=True,
+    parser.add_argument("--best", type=str2bool, default=False,
                         help="Use the best valid grasp if available.")
     parser.add_argument("--force", type=str2bool, default=True,
                         help="Force selection of a grasp even if below threshold.")
+    parser.add_argument("--high_res", type=str2bool, default=False,
+                        help="Use high resolution (60) if True, otherwise use standard resolution (40).")
     parser.add_argument("--max_scenes", type=int, default=0,
                         help="Maximum number of scenes to process (0 for all)")
     
@@ -201,13 +209,13 @@ if __name__ == "__main__":
                         help="Root directory for saving results")
     parser.add_argument("--logdir", type=Path, default=None,
                         help="Directory for storing logs or intermediate results.")
-    parser.add_argument("--description", type=str, default="ptv3_clip_acronym_inference",
+    parser.add_argument("--description", type=str, default="ptv3_scene_acronym_inference",
                         help="Experiment description.")
     
     # Visualization and debugging
     parser.add_argument("--sim-gui", type=str2bool, default=False,
                         help="Whether to enable a simulation GUI.")
-    parser.add_argument("--vis", type=str2bool, default=True,
+    parser.add_argument("--vis", type=str2bool, default=False,
                         help="Whether to visualize and save the affordance map.")
     parser.add_argument("--video-recording", type=str2bool, default=True,
                         help="Whether to record videos of grasping attempts.")
@@ -216,7 +224,7 @@ if __name__ == "__main__":
     
     # Legacy parameters (kept for compatibility but not used)
     parser.add_argument("--hunyun2_path", type=str, default=None,
-                        help="Path to hunyun2 model (not used for ptv3_clip but kept for compatibility).")
+                        help="Path to hunyun2 model (not used for ptv3_scene_gt but kept for compatibility).")
     
     # Hunyuan3D support
     parser.add_argument("--hunyuan3D_ptv3", type=str2bool, default=True,
@@ -233,7 +241,7 @@ if __name__ == "__main__":
         if args.hunyuan3D_path is None:
             args.hunyuan3D_path = '/usr/stud/dira/GraspInClutter/Gen3DSR/hunyuan_results/acronym/medium'
         if args.result_root is None:
-            args.result_root = 'targo_eval_results/acronym/eval_results_ptv3_clip-medium-occlusion'
+            args.result_root = 'targo_eval_results/acronym/eval_results_ptv3_scene_gt-medium-occlusion'
         if args.test_root is None:
             args.test_root = 'data_scenes/acronym/acronym-middle-occlusion-1000'
         if args.occ_level_dict is None:
@@ -244,7 +252,7 @@ if __name__ == "__main__":
         if args.hunyuan3D_path is None:
             args.hunyuan3D_path = '/usr/stud/dira/GraspInClutter/Gen3DSR/hunyuan_results/acronym/slight'
         if args.result_root is None:
-            args.result_root = 'targo_eval_results/acronym/eval_results_ptv3_clip-slight-occlusion'
+            args.result_root = 'targo_eval_results/acronym/eval_results_ptv3_scene_gt-slight-occlusion'
         if args.test_root is None:
             args.test_root = 'data_scenes/acronym/acronym-slight-occlusion-1000'
         if args.occ_level_dict is None:
@@ -255,7 +263,7 @@ if __name__ == "__main__":
         if args.hunyuan3D_path is None:
             args.hunyuan3D_path = '/usr/stud/dira/GraspInClutter/Gen3DSR/hunyuan_results/acronym/no'
         if args.result_root is None:
-            args.result_root = 'targo_eval_results/acronym/eval_results_ptv3_clip-no-occlusion'
+            args.result_root = 'targo_eval_results/acronym/eval_results_ptv3_scene_gt-no-occlusion'
         if args.test_root is None:
             args.test_root = 'data_scenes/acronym/acronym-no-occlusion-1000'
         if args.occ_level_dict is None:
@@ -264,7 +272,7 @@ if __name__ == "__main__":
     # Validate model file exists
     if not args.model.exists():
         print(f"ERROR: Model file not found: {args.model}")
-        print("Please provide a valid path to ptv3_clip model checkpoint")
+        print("Please provide a valid path to ptv3_scene model checkpoint")
         exit(1)
     
     # Validate shape completion configuration
@@ -280,11 +288,11 @@ if __name__ == "__main__":
     # Set default logdir if not provided
     if args.logdir is None:
         if args.occlusion_level == "medium":
-            args.logdir = Path('targo_eval_results/acronym/eval_results_ptv3_clip-medium-occlusion')
+            args.logdir = Path('targo_eval_results/acronym/eval_results_ptv3_scene_gt-medium-occlusion')
         elif args.occlusion_level == "slight":
-            args.logdir = Path('targo_eval_results/acronym/eval_results_ptv3_clip-slight-occlusion')
+            args.logdir = Path('targo_eval_results/acronym/eval_results_ptv3_scene_gt-slight-occlusion')
         else:
-            args.logdir = Path('targo_eval_results/acronym/eval_results_ptv3_clip-no-occlusion')
+            args.logdir = Path('targo_eval_results/acronym/eval_results_ptv3_scene_gt-no-occlusion')
 
-    print("Starting PTV3 CLIP inference on ACRONYM dataset...")
-    main(args)
+    print("Starting PTV3 Scene inference on ACRONYM dataset...")
+    main(args) 

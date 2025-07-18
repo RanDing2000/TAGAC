@@ -111,7 +111,7 @@ def main(args):
             force_detection=args.force,
             out_th=args.out_th if hasattr(args, 'out_th') and args.out_th is not None else 0.5,
             visualize=args.vis,
-            cd_iou_measure=True
+            cd_iou_measure=True  # Enable CD and IoU measurement for VGN
         )
     elif args.type in ['giga', 'giga_aff', 'giga_hr', 'targo', 'targo_full_targ', 'targo_hunyun2', 'targo_ptv3', 'ptv3_scene', 'FGC-GraspNet', 'AnyGrasp']:
         grasp_planner = VGNImplicit(
@@ -175,7 +175,7 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--type", default="targo",
+    parser.add_argument("--type", default="giga",
                         choices=["giga", "vgn", "targo", "targo_full_targ", "targo_hunyun2", "targo_ptv3", "ptv3_scene", 
                                 "FGC-GraspNet", "AnyGrasp"],
                         help="Network to be used: vgn | giga_hr | giga_aff | giga | targo | targo_full_targ | targo_hunyun2 | targo_ptv3 | ptv3_scene | FGC-GraspNet | AnyGrasp")
@@ -193,8 +193,8 @@ if __name__ == "__main__":
                         help="Optional experiment description.")
     parser.add_argument("--test_root", type=str,
                         default=None)
-    parser.add_argument("--model", type=Path, default='/usr/stud/dira/GraspInClutter/targo/checkpoints/targonet.pt')
-    parser.add_argument("--out_th", type=float, default=0.5,
+    parser.add_argument("--model", type=Path, default='checkpoints/giga_packed.pt')
+    parser.add_argument("--out_th", type=float, default=0.8,
                         help="Output threshold for valid grasps.")
     parser.add_argument("--scene", type=str, choices=["pile", "packed"], default="packed")
     parser.add_argument("--object-set", type=str, default="packed/train")
@@ -211,7 +211,7 @@ if __name__ == "__main__":
                         help="Capture the scene from one side rather than top-down.")
     parser.add_argument("--vis", action="store_true", default=False,
                         help="Whether to visualize and save the affordance map.")
-    parser.add_argument("--video-recording", type=str2bool, default=False,
+    parser.add_argument("--video-recording", type=str2bool, default=True,
                         help="Whether to record videos of grasping attempts.")
     parser.add_argument("--target-file", type=str, default='/usr/stud/dira/GraspInClutter/targo/example_targets/acronym_target_list.txt',
                         help="Path to a .txt file containing target names to record. If provided, only videos of these targets will be recorded.")

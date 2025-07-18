@@ -10,11 +10,11 @@ import numpy as np
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# Grasp planner modules - 专门使用PTV3SceneImplicit
+# Grasp planner modules - 专门使用PTV3ClipImplicit
 from src.vgn.detection_ptv3_implicit import PTV3ClipImplicit
 
 # Only keep target_sample_offline
-from src.vgn.experiments import target_sample_offline_acronym   
+from src.vgn.experiments import target_sample_offline_ycb   
 
 # Utility
 from src.vgn.utils.misc import set_random_seed
@@ -36,7 +36,7 @@ def str2bool(v):
 
 def create_and_write_args_to_result_path(args):
     """
-    Create a result directory for ptv3_scene model results on ACRONYM dataset.
+    Create a result directory for ptv3_clip model results on YCB dataset.
     Then write the command-line arguments to a text file in that directory.
     """
     model_name = 'ptv3_clip'
@@ -68,10 +68,10 @@ def create_and_write_args_to_result_path(args):
 
 def main(args):
     """
-    Main entry point: creates the PTV3SceneImplicit grasp planner, then runs target_sample_offline for ACRONYM.
+    Main entry point: creates the PTV3ClipImplicit grasp planner, then runs target_sample_offline for YCB.
     """
     print("=" * 60)
-    print("PTV3 SCENE INFERENCE ON ACRONYM DATASET")
+    print("PTV3 CLIP INFERENCE ON YCB DATASET")
     print("=" * 60)
     print(f"Model type: ptv3_clip (fixed)")
     print(f"Model path: {args.model}")
@@ -87,7 +87,7 @@ def main(args):
         print("Using complete geometry objects")
     print("=" * 60)
     
-    # Create PTV3SceneImplicit grasp planner (专门为ptv3_clip设计)
+    # Create PTV3ClipImplicit grasp planner (专门为ptv3_clip设计)
     grasp_planner = PTV3ClipImplicit(
         args.model,
         'ptv3_clip',  # 固定使用ptv3_clip  
@@ -104,13 +104,13 @@ def main(args):
     result_path = create_and_write_args_to_result_path(args)
     args.result_path = result_path
     
-    print(f"\nStarting PTV3 CLIP inference on {args.occlusion_level} occlusion ACRONYM dataset...")
+    print(f"\nStarting PTV3 CLIP inference on {args.occlusion_level} occlusion YCB dataset...")
     print(f"Result path: {result_path}")
     
-    # Run target_sample_offline evaluation for ACRONYM (与训练脚本保持一致的调用方式)
-    occ_level_sr = target_sample_offline_acronym.run(
+    # Run target_sample_offline evaluation for YCB (与训练脚本保持一致的调用方式)
+    occ_level_sr = target_sample_offline_ycb.run(
         grasp_plan_fn=grasp_planner,
-        data_type='acronym',
+        data_type='ycb',  # 添加缺失的data_type参数
         logdir=args.logdir,
         description=args.description,
         scene=args.scene,
@@ -145,22 +145,22 @@ def main(args):
         print("\n====== Running category analysis ======")
         analysis_cmd = [
             "python", 
-            "targo_eval_results/stastics_analysis/analyze_category.py", 
+            "targo_eval_results/stastics_analysis/analyze_category_detailed.py", 
             "--eval_file", f"{args.result_path}/meta_evaluations.txt",
             "--output_dir", args.result_path,
-            "--data_type", "acronym",
+            "--data_type", "ycb",
         ]
         print(f"Executing: {' '.join(analysis_cmd)}")
         subprocess.run(analysis_cmd)
         print("====== Category analysis completed ======\n")
     
     print("=" * 60)
-    print("PTV3 CLIP INFERENCE ON ACRONYM COMPLETED")
+    print("PTV3 CLIP INFERENCE ON YCB COMPLETED")
     print("=" * 60)
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="PTV3 CLIP Inference on ACRONYM Dataset")
+    parser = argparse.ArgumentParser(description="PTV3 CLIP Inference on YCB Dataset")
 
     # Model configuration (simplified for ptv3_clip only)
     parser.add_argument("--model", type=Path, default='checkpoints/ptv3_clip.pt',
@@ -179,9 +179,9 @@ if __name__ == "__main__":
                         help="Path to occlusion level dictionary JSON file")
     
     # Inference parameters
-    parser.add_argument("--out_th", type=float, default=0.6,
+    parser.add_argument("--out_th", type=float, default=0.5,
                         help="Output threshold for valid grasps.")
-    parser.add_argument("--qual-th", type=float, default=0.9,
+    parser.add_argument("--qual-th", type=float, default=0.1,
                         help="Quality threshold for valid grasps.")
     parser.add_argument("--best", type=str2bool, default=True,
                         help="Use the best valid grasp if available.")
@@ -201,17 +201,17 @@ if __name__ == "__main__":
                         help="Root directory for saving results")
     parser.add_argument("--logdir", type=Path, default=None,
                         help="Directory for storing logs or intermediate results.")
-    parser.add_argument("--description", type=str, default="ptv3_clip_acronym_inference",
+    parser.add_argument("--description", type=str, default="ptv3_clip_ycb_inference",
                         help="Experiment description.")
     
     # Visualization and debugging
     parser.add_argument("--sim-gui", type=str2bool, default=False,
                         help="Whether to enable a simulation GUI.")
-    parser.add_argument("--vis", type=str2bool, default=True,
+    parser.add_argument("--vis", type=str2bool, default=False,
                         help="Whether to visualize and save the affordance map.")
     parser.add_argument("--video-recording", type=str2bool, default=True,
                         help="Whether to record videos of grasping attempts.")
-    parser.add_argument("--target-file", type=str, default='/usr/stud/dira/GraspInClutter/targo/example_targets/acronym_target_list.txt',
+    parser.add_argument("--target-file", type=str, default='/usr/stud/dira/GraspInClutter/targo/example_targets/target_list.txt',
                         help="Path to a .txt file containing target names to record. If provided, only videos of these targets will be recorded.")
     
     # Legacy parameters (kept for compatibility but not used)
@@ -229,37 +229,37 @@ if __name__ == "__main__":
     # Set paths based on occlusion level
     if args.occlusion_level == "medium":
         if args.hunyun2_path is None:
-            args.hunyun2_path = '/usr/stud/dira/GraspInClutter/Gen3DSR/hunyuan_results/acronym/medium'
+            args.hunyun2_path = '/usr/stud/dira/GraspInClutter/Gen3DSR/hunyuan_results/ycb/medium'
         if args.hunyuan3D_path is None:
-            args.hunyuan3D_path = '/usr/stud/dira/GraspInClutter/Gen3DSR/hunyuan_results/acronym/medium'
+            args.hunyuan3D_path = '/usr/stud/dira/GraspInClutter/Gen3DSR/hunyuan_results/ycb/medium'
         if args.result_root is None:
-            args.result_root = 'targo_eval_results/acronym/eval_results_ptv3_clip-medium-occlusion'
+            args.result_root = 'targo_eval_results/ycb/eval_results_ptv3_clip-medium-occlusion'
         if args.test_root is None:
-            args.test_root = 'data_scenes/acronym/acronym-middle-occlusion-1000'
+            args.test_root = 'data_scenes/ycb/maniskill-ycb-v2-middle-occlusion-1000'
         if args.occ_level_dict is None:
-            args.occ_level_dict = '/usr/stud/dira/GraspInClutter/targo/data_scenes/acronym/acronym-middle-occlusion-1000/test_set/occlusion_level_dict.json'
+            args.occ_level_dict = '/usr/stud/dira/GraspInClutter/targo/data_scenes/ycb/maniskill-ycb-v2-middle-occlusion-1000/test_set/occlusion_level_dict.json'
     elif args.occlusion_level == "slight":
         if args.hunyun2_path is None:
-            args.hunyun2_path = '/usr/stud/dira/GraspInClutter/Gen3DSR/hunyuan_results/acronym/slight'
+            args.hunyun2_path = '/usr/stud/dira/GraspInClutter/Gen3DSR/hunyuan_results/ycb/slight'
         if args.hunyuan3D_path is None:
-            args.hunyuan3D_path = '/usr/stud/dira/GraspInClutter/Gen3DSR/hunyuan_results/acronym/slight'
+            args.hunyuan3D_path = '/usr/stud/dira/GraspInClutter/Gen3DSR/hunyuan_results/ycb/slight'
         if args.result_root is None:
-            args.result_root = 'targo_eval_results/acronym/eval_results_ptv3_clip-slight-occlusion'
+            args.result_root = 'targo_eval_results/ycb/eval_results_ptv3_clip-slight-occlusion'
         if args.test_root is None:
-            args.test_root = 'data_scenes/acronym/acronym-slight-occlusion-1000'
+            args.test_root = 'data_scenes/ycb/maniskill-ycb-v2-slight-occlusion-1000'
         if args.occ_level_dict is None:
-            args.occ_level_dict = 'data_scenes/acronym/acronym-slight-occlusion-1000/test_set/occlusion_level_dict.json'
+            args.occ_level_dict = 'data_scenes/ycb/maniskill-ycb-v2-slight-occlusion-1000/test_set/occlusion_level_dict.json'
     elif args.occlusion_level == "no":
         if args.hunyun2_path is None:
-            args.hunyun2_path = '/usr/stud/dira/GraspInClutter/Gen3DSR/hunyuan_results/acronym/no'
+            args.hunyun2_path = '/usr/stud/dira/GraspInClutter/Gen3DSR/hunyuan_results/ycb/no'
         if args.hunyuan3D_path is None:
-            args.hunyuan3D_path = '/usr/stud/dira/GraspInClutter/Gen3DSR/hunyuan_results/acronym/no'
+            args.hunyuan3D_path = '/usr/stud/dira/GraspInClutter/Gen3DSR/hunyuan_results/ycb/no'
         if args.result_root is None:
-            args.result_root = 'targo_eval_results/acronym/eval_results_ptv3_clip-no-occlusion'
+            args.result_root = 'targo_eval_results/ycb/eval_results_ptv3_clip-no-occlusion'
         if args.test_root is None:
-            args.test_root = 'data_scenes/acronym/acronym-no-occlusion-1000'
+            args.test_root = 'data_scenes/ycb/maniskill-ycb-v2-no-occlusion-1000'
         if args.occ_level_dict is None:
-            args.occ_level_dict = 'data_scenes/acronym/acronym-no-occlusion-1000/test_set/occlusion_level_dict.json'
+            args.occ_level_dict = 'data_scenes/ycb/maniskill-ycb-v2-no-occlusion-1000/test_set/occlusion_level_dict.json'
 
     # Validate model file exists
     if not args.model.exists():
@@ -280,11 +280,11 @@ if __name__ == "__main__":
     # Set default logdir if not provided
     if args.logdir is None:
         if args.occlusion_level == "medium":
-            args.logdir = Path('targo_eval_results/acronym/eval_results_ptv3_clip-medium-occlusion')
+            args.logdir = Path('targo_eval_results/ycb/eval_results_ptv3_clip-medium-occlusion')
         elif args.occlusion_level == "slight":
-            args.logdir = Path('targo_eval_results/acronym/eval_results_ptv3_clip-slight-occlusion')
+            args.logdir = Path('targo_eval_results/ycb/eval_results_ptv3_clip-slight-occlusion')
         else:
-            args.logdir = Path('targo_eval_results/acronym/eval_results_ptv3_clip-no-occlusion')
+            args.logdir = Path('targo_eval_results/ycb/eval_results_ptv3_clip-no-occlusion')
 
-    print("Starting PTV3 CLIP inference on ACRONYM dataset...")
-    main(args)
+    print("Starting PTV3 CLIP inference on YCB dataset...")
+    main(args) 

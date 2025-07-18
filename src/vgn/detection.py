@@ -91,8 +91,8 @@ class VGN(object):
             scores = scores[p]
 
         # Initialize default CD and IoU values for VGN
-        cd = 0.0
-        iou = 0.0
+        cd = -1.0  # VGN doesn't do shape reconstruction
+        iou = -1.0  # VGN doesn't do shape reconstruction
 
         if self.visualize:
             grasp_mesh_list = [visual.grasp2mesh(g, s) for g, s in zip(grasps, scores)]

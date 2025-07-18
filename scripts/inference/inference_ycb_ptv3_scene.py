@@ -208,7 +208,7 @@ if __name__ == "__main__":
                         help="Whether to enable a simulation GUI.")
     parser.add_argument("--vis", type=str2bool, default=False,
                         help="Whether to visualize and save the affordance map.")
-    parser.add_argument("--video-recording", type=str2bool, default=False,
+    parser.add_argument("--video-recording", type=str2bool, default=True,
                         help="Whether to record videos of grasping attempts.")
     parser.add_argument("--target-file", type=str, default='/usr/stud/dira/GraspInClutter/targo/example_targets/target_list.txt',
                         help="Path to a .txt file containing target names to record. If provided, only videos of these targets will be recorded.")

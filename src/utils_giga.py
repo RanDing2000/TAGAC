@@ -1117,33 +1117,85 @@ def compute_chamfer_and_iou(target_mesh, completed_mesh):
 #     # o3d.io.write_triangle_mesh("mesh.ply", mesh)
 #     return mesh_to_tsdf(mesh)
 
-def mesh_to_tsdf(mesh):
-    ## mesh -> sdf -> tsdf
-    x, y, z = torch.meshgrid(torch.linspace(start=0, end=0.3 - 0.3 / 40, steps=40), torch.linspace(start=0, end=0.3 - 0.3 / 40, steps=40), torch.linspace(start=0, end=0.3 - 0.3 / 40, steps=40))
-    pos = torch.stack((x, y, z), dim=-1).float() # (1, 40, 40, 40, 3)
+def mesh_to_tsdf(mesh, size=0.3, resolution=40):
+    """
+    Convert mesh to TSDF using SDF sampling.
+
+    Args:
+        mesh: trimesh.Trimesh object
+        size: Size of the workspace (float, default 0.3)
+        resolution: TSDF grid resolution (int, default 40)
+
+    Returns:
+        tsdf: TSDF grid (numpy array of shape [resolution, resolution, resolution])
+    """
+    # Create grid coordinates in [0, size)
+    lin = torch.linspace(start=0, end=size - size / resolution, steps=resolution)
+    x, y, z = torch.meshgrid(lin, lin, lin, indexing='ij')
+    pos = torch.stack((x, y, z), dim=-1).float()  # (resolution, resolution, resolution, 3)
     pos = pos.view(-1, 3)
-    
+
     # Convert mesh vertices and faces to correct format
     vertices = np.asarray(mesh.vertices, dtype=np.float32)
     faces = np.asarray(mesh.triangles, dtype=np.uint32)
-    
+
     # Ensure faces are 2D array
     if faces.ndim == 3:
         faces = np.asarray(mesh.faces, dtype=np.uint32)
-        # faces = np.array([[np.where((vertices == v).all(axis=1))[0][0] for v in face] for face in faces])
-        # faces = faces_indices.reshape(-1, 3)
-        # faces = faces.reshape(-1, 3)
-        
+
     f = SDF(vertices, faces)
     sdf = f(pos)
-    sdf_reshaped = sdf.reshape(40, 40, 40)
-    sdf_trunc = 4 * (0.3/40)
+    sdf_reshaped = sdf.reshape(resolution, resolution, resolution)
+    sdf_trunc = 4 * (size / resolution)
 
-    mask = (sdf_reshaped >= sdf_trunc) | (sdf_reshaped <= -sdf_trunc) 
+    mask = (sdf_reshaped >= sdf_trunc) | (sdf_reshaped <= -sdf_trunc)
 
     tsdf = (sdf_reshaped / sdf_trunc + 1) / 2
     tsdf[mask] = 0
     return tsdf
+
+# def mesh_to_tsdf(mesh, size=0.3, resolution=40):
+#     """
+#     Convert mesh to TSDF using the same method as in training.
+    
+#     Args:
+#         mesh: trimesh.Trimesh object
+#         size: Size of the workspace
+#         resolution: TSDF resolution
+        
+#     Returns:
+#         tsdf: TSDF grid
+#     """
+#     try:
+#         # Create camera and simulation setup
+#         camera = Camera.default()
+        
+#         # Create TSDF
+#         tsdf = create_tsdf(
+#             size=size,
+#             resolution=resolution,
+#             depth_imgs=None,  # We don't have depth images, using mesh directly
+#             intrinsic=camera.intrinsic,
+#             extrinsics=None
+#         )
+        
+#         # For mesh-based TSDF, we need to convert mesh to depth images
+#         # This is a simplified approach - in practice, you might want to render from multiple viewpoints
+        
+#         # Alternative: use mesh voxelization
+#         voxel_grid = mesh.voxelized(pitch=size/resolution)
+#         voxel_array = voxel_grid.matrix.astype(np.float32)
+        
+#         # Convert to TSDF format (distance field)
+#         # This is a simplified conversion - proper TSDF would need signed distance
+#         tsdf_grid = np.where(voxel_array > 0, 1.0, -1.0)
+        
+#         return tsdf_grid
+        
+#     except Exception as e:
+#         print(f"Error converting mesh to TSDF: {e}")
+#         return None
+
 
 
     # return tsdf_volume

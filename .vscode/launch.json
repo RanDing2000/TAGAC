@@ -2,15 +2,50 @@
   "version": "0.2.0",
   "configurations": [
     {
+      "name": "Analyze category detailed (ycb)",
+      "type": "python",
+      "request": "launch",
+      "program": "${workspaceFolder}/targo_eval_results/stastics_analysis/analyze_category_detailed.py",
+      "args": [
+        "--eval_file",
+        "${workspaceFolder}/targo_eval_results/ycb/eval_results_full-medium-occlusion/targo/2025-05-22_08-11-16/meta_evaluations.txt",
+        "--output_dir",
+        "${workspaceFolder}/targo_eval_results/ycb/eval_results_full-medium-occlusion/targo/2025-05-22_08-11-16",
+        "--data_type",
+        "ycb"
+      ],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "Analyze category detailed (acronym)",
+      "type": "python",
+      "request": "launch",
+      "program": "${workspaceFolder}/targo_eval_results/stastics_analysis/analyze_category_detailed.py",
+      "args": [
+        "--eval_file",
+        "${workspaceFolder}/targo_eval_results/acronym/eval_results_ptv3_clip-medium-occlusion/ptv3_clip/2025-07-06_07-42-48/meta_evaluations.txt",
+        "--output_dir",
+        "${workspaceFolder}/targo_eval_results/acronym/eval_results_ptv3_clip-medium-occlusion/ptv3_clip/2025-07-06_07-42-48",
+        "--data_type",
+        "acronym"
+      ],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    },
+    {
       "name": "Debug TARGO-Net (ptv3_scene)",
       "type": "python",
       "request": "launch",
       "program": "${workspaceFolder}/scripts/train/train_targo_ptv3.py",
       "console": "integratedTerminal",
       "args": [
-        "--net", "ptv3_scene",
-        "--batch-size", "2",
-        "--ablation_dataset", "1_100000"
+        "--net",
+        "ptv3_scene",
+        "--batch-size",
+        "2",
+        "--ablation_dataset",
+        "1_100000"
       ]
     },
     {
@@ -20,7 +55,8 @@
       "program": "${workspaceFolder}/scripts/train_targo_full.py",
       "console": "integratedTerminal",
       "args": [
-        "--batch-size", "2"
+        "--batch-size",
+        "2"
       ]
     }
   ]

@@ -158,6 +158,23 @@ def run(
     processed_scenes_feat_ptv3_clip_path = f'{test_root}/processed_scenes_ptv3_clip_feat'
     if not os.path.exists(processed_scenes_feat_ptv3_clip_path):
         os.makedirs(processed_scenes_feat_ptv3_clip_path)
+    
+    processed_scenes_ptv3_clip_gt_path = f'{test_root}/processed_scenes_ptv3_clip_gt'
+    if not os.path.exists(processed_scenes_ptv3_clip_gt_path):
+        os.makedirs(processed_scenes_ptv3_clip_gt_path)
+    
+    processed_scenes_feat_ptv3_clip_gt_path = f'{test_root}/processed_scenes_ptv3_clip_feat_gt'
+    if not os.path.exists(processed_scenes_feat_ptv3_clip_gt_path):
+        os.makedirs(processed_scenes_feat_ptv3_clip_gt_path)
+
+
+    processed_scenes_ptv3_scene_gt_path = f'{test_root}/processed_scenes_ptv3_scene_gt'
+    if not os.path.exists(processed_scenes_ptv3_scene_gt_path):
+        os.makedirs(processed_scenes_ptv3_scene_gt_path)
+    
+    # processed_scenes_feat_ptv3_scene_gt_path = f'{test_root}/processed_scenes_ptv3_scene_gt_feat'
+    # if not os.path.exists(processed_scenes_feat_ptv3_scene_gt_path):
+    #     os.makedirs(processed_scenes_feat_ptv3_scene_gt_path)
 
     # Dictionaries to track occlusion stats
     occ_level_count_dict = init_occ_level_count_dict()
@@ -207,6 +224,9 @@ def run(
         # curr_processed_scene_ptv3_clip_path = os.path.join(processed_scenes_ptv3_clip_path, scene_name)
         curr_processed_scene_ptv3_clip_path = f'{processed_scenes_ptv3_clip_path}/{scene_name}.npz'
         curr_processed_scene_feat_ptv3_clip_path = f'{processed_scenes_feat_ptv3_clip_path}/{scene_name}.npz'
+        curr_processed_scene_ptv3_scene_gt_path = f'{processed_scenes_ptv3_scene_gt_path}/{scene_name}.npz'
+        curr_processed_scene_feat_ptv3_clip_gt_path = f'{processed_scenes_feat_ptv3_clip_gt_path}/{scene_name}.npz'
+        curr_processed_scene_ptv3_clip_gt_path = f'{processed_scenes_ptv3_clip_gt_path}/{scene_name}.npz'
         # if not os.path.exists(cur_processed_scene_ptv3_clip_path):
         #     os.makedirs(cur_processed_scene_ptv3_clip_path)
         # if not os.path.exists(cur_processed_scene_feat_ptv3_clip_path):
@@ -247,34 +267,14 @@ def run(
         )["pc"]
 
         # Place objects
+
+        # Place objects
         for obj_id, mesh_info in enumerate(mp_data.item().values()):
             pose = Transform.from_matrix(mesh_info[2])
-            if data_type != 'acronym':
-                if mesh_info[0].split('/')[-1] == 'plane.obj':
-                    urdf_path = mesh_info[0].replace(".obj", ".urdf")
-                else:
-                    # urdf_path = mesh_info[0].replace("_visual.obj", ".urdf")
-                    urdf_path = mesh_info[0].replace("_textured.obj", ".urdf")
-            
-            elif data_type == 'acronym':
-                # Extract file ID part (without path and extension)
-                file_basename = os.path.basename(mesh_info[0])
-                if file_basename == 'plane.obj':
-                    urdf_path = mesh_info[0].replace(".obj", ".urdf")
-                else:
-                    file_id = file_basename.replace("_textured.obj", "").replace(".obj", "")
-                    
-                    urdf_base_dir = "/usr/stud/dira/GraspInClutter/targo/data/acronym/urdfs_acronym"
-                    
-                    # Method 1: Directly build path (if no category prefix)
-                    urdf_path = f"{urdf_base_dir}/{file_id}.urdf"
-                    
-                    # Method 2: If category prefix exists, use glob to find matching files
-                    if not os.path.exists(urdf_path):
-                        import glob
-                        matching_files = glob.glob(f"{urdf_base_dir}/*_{file_id}.urdf")
-                        if matching_files:
-                            urdf_path = matching_files[0]  # Use the first matching file found
+            if mesh_info[0].split('/')[-1] == 'plane.obj':
+                urdf_path = mesh_info[0].replace(".obj", ".urdf")
+            else:
+                urdf_path = mesh_info[0].replace("_visual.obj", ".urdf")
 
             body = sim.world.load_urdf(
                 urdf_path=urdf_path,
@@ -301,10 +301,10 @@ def run(
             if obj_id == tgt_id:
                 body.set_color(link_index=-1, rgba_color=(1.0, 0.0, 0.0, 1.0))
                 targ_name = urdf_path.split('/')[-1].split('.')[0]
-                ycb_object_category_dict = json.load(open('/usr/stud/dira/GraspInClutter/targo/targo_eval_results/stastics_analysis/ycb_prompt_dict.json'))
-                target_category = ycb_object_category_dict[targ_name]
+                vgn_object_category_dict = json.load(open('/usr/stud/dira/GraspInClutter/targo/data/targo_category/vgn_objects_category_full.json'))
+                target_category = vgn_object_category_dict[targ_name]
                 target_mesh_gt = tri_mesh
-        
+
         end_time = time.time()
         if len(occluder_heights) == 0:
             relative_height = tgt_height
@@ -359,6 +359,100 @@ def run(
                         type=model_type,
                         timings=timings
                     )
+        elif model_type == 'ptv3_clip_gt':
+            if not os.path.exists(curr_processed_scene_ptv3_clip_gt_path):
+                try:
+                    tsdf, timings["integration"], scene_no_targ_pc, complete_targ_pc, complete_targ_tsdf, targ_grid, occ_level, iou_value, cd_value, vis_dict, target_clip_features, scene_clip_features = \
+                    sim.acquire_single_tsdf_target_grid_ptv3_clip_gt(
+                        path_to_npz,
+                        tgt_id,
+                        40,
+                        model_type,  
+                        target_mesh_gt=target_mesh_gt,
+                        curr_mesh_pose_list=scene_name,
+                        hunyuan3D_ptv3=hunyuan3D_ptv3,
+                        hunyuan3D_path=hunyuan3D_path,
+                        target_category=target_category,
+                    )
+                    vis_path = f'{logdir}/scene_vis/{scene_name}'
+                    os.makedirs(vis_path, exist_ok=True)
+                    state = argparse.Namespace(
+                            # tsdf=tsdf,
+                            scene_no_targ_pc=scene_no_targ_pc,
+                            complete_targ_pc=complete_targ_pc,
+                            complete_targ_tsdf=complete_targ_tsdf,
+                            targ_grid=targ_grid,
+                            occ_level=occ_level,
+                            type=model_type,
+                            timings=timings,
+                            voxel_size = tsdf.voxel_size,
+                            size = tsdf.size,
+                            # vis_path=vis_path,
+                            iou=iou_value,
+                            cd=cd_value,
+                            vis_dict=vis_dict,
+                            vis_path=vis_path,
+                            target_clip_features=target_clip_features,
+                            scene_clip_features=scene_clip_features
+                        )
+                    np.savez(curr_processed_scene_ptv3_clip_gt_path, **state.__dict__)
+                except Exception as e:
+                    print(f"ERROR: Data corruption in scene {scene_name}: {str(e)}")
+                    print(f"Skipping scene {scene_name}...")
+                    continue
+            else:
+                state = np.load(curr_processed_scene_ptv3_clip_gt_path, allow_pickle=True)
+                state = argparse.Namespace(**state)
+                vis_path = f'{logdir}/scene_vis/{scene_name}'
+                os.makedirs(vis_path, exist_ok=True)
+                state.vis_path = vis_path
+        
+        elif model_type == 'ptv3_scene_gt':
+            if not os.path.exists(curr_processed_scene_ptv3_scene_gt_path):
+                try:
+                    tsdf, timings["integration"], scene_no_targ_pc, complete_targ_pc, complete_targ_tsdf, targ_grid, occ_level, iou_value, cd_value, vis_dict = \
+                    sim.acquire_single_tsdf_target_grid_ptv3_scene_gt(
+                        path_to_npz,
+                        tgt_id,
+                        40,
+                        model_type,  
+                        target_mesh_gt=target_mesh_gt,
+                        curr_mesh_pose_list=scene_name,
+                        hunyuan3D_ptv3=hunyuan3D_ptv3,
+                        hunyuan3D_path=hunyuan3D_path,
+                        target_category=target_category,
+                    )
+                    vis_path = f'{logdir}/scene_vis/{scene_name}'
+                    os.makedirs(vis_path, exist_ok=True)
+                    state = argparse.Namespace(
+                            # tsdf=tsdf,
+                            scene_no_targ_pc=scene_no_targ_pc,
+                            complete_targ_pc=complete_targ_pc,
+                            complete_targ_tsdf=complete_targ_tsdf,
+                            targ_grid=targ_grid,
+                            occ_level=occ_level,
+                            type=model_type,
+                            timings=timings,
+                            voxel_size = tsdf.voxel_size,
+                            size = tsdf.size,
+                            # vis_path=vis_path,
+                            iou=iou_value,
+                            cd=cd_value,
+                            vis_dict=vis_dict,
+                            vis_path=vis_path,
+                        )
+                    np.savez(curr_processed_scene_ptv3_scene_gt_path, **state.__dict__)
+                except Exception as e:
+                    print(f"ERROR: Data corruption in scene {scene_name}: {str(e)}")
+                    print(f"Skipping scene {scene_name}...")
+                    continue
+            else:
+                state = np.load(curr_processed_scene_ptv3_scene_gt_path, allow_pickle=True)
+                state = argparse.Namespace(**state)
+                vis_path = f'{logdir}/scene_vis/{scene_name}'
+                os.makedirs(vis_path, exist_ok=True)
+                state.vis_path = vis_path
+
             
         elif model_type == 'ptv3_scene':
             tsdf, timings["integration"], scene_no_targ_pc, complete_targ_pc, complete_targ_tsdf, targ_grid, occ_level, iou_value, cd_value = \
@@ -562,6 +656,28 @@ def run(
                 "cd": float(cd),
                 "iou": float(iou)
             }
+        elif model_type == 'ptv3_scene_gt':
+            # 专门为 ptv3_clip 模型调用
+            grasps, scores, timings["planning"], cd, iou = grasp_plan_fn(state, scene_mesh, scene_name=scene_name, cd_iou_measure=True, target_mesh_gt=target_mesh_gt)
+            # Store metrics for this scene
+            scene_metrics[scene_name] = {
+                "target_name": targ_name,
+                "occlusion_level": float(occ_level),
+                "cd": float(cd),
+                "iou": float(iou)
+            }
+        
+        elif model_type == 'ptv3_clip_gt':
+            # 专门为 ptv3_clip 模型调用
+            grasps, scores, timings["planning"], cd, iou = grasp_plan_fn(state, scene_mesh, clip_feat_gt_path=curr_processed_scene_feat_ptv3_clip_gt_path, hunyun2_path=hunyun2_path, scene_name=scene_name, cd_iou_measure=True, target_mesh_gt=target_mesh_gt)
+            # Store metrics for this scene
+            scene_metrics[scene_name] = {
+                "target_name": targ_name,
+                "occlusion_level": float(occ_level),
+                "cd": float(cd),
+                "iou": float(iou)
+            }
+
         elif model_type == 'vgn':
             grasps, scores, timings["planning"], cd, iou = grasp_plan_fn(state, scene_mesh, cd_iou_measure=True, target_mesh_gt=target_mesh_gt)
             scene_metrics[scene_name] = {

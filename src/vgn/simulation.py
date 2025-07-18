@@ -15,12 +15,20 @@ from src.vgn.utils import btsim, workspace_lines
 from src.utils_targo import save_point_cloud_as_ply
 from src.vgn.utils.transform import Rotation, Transform
 import pathlib
-from src.utils_giga import point_cloud_to_tsdf
+from src.utils_giga import point_cloud_to_tsdf, mesh_to_tsdf
 import random
 import trimesh
 import trimesh.transformations as tra
 import os
 import torch
+
+# CLIP imports
+try:
+    import clip
+    CLIP_AVAILABLE = True
+except ImportError:
+    CLIP_AVAILABLE = False
+    print("Warning: CLIP not available. CLIP features will not be generated.")
 
 class SceneObject:
     visual_fpath: pathlib.Path
@@ -146,7 +154,8 @@ class ClutterRemovalSim(object):
         self.ycb_root = Path("/usr/stud/dira/GraspInClutter/targo/data/maniskill_ycb/mani_skill2_ycb/collisions")
         self.g1b_root = Path("/usr/stud/dira/GraspInClutter/targo/data/g1b/collisions")
         self.egad_root = Path("/usr/stud/dira/GraspInClutter/targo/data/egad/collisions")
-        self.acroym_root = Path("/usr/stud/dira/GraspInClutter/targo/data/acronym/urdfs_acronym")
+        self.gso_root = Path("/storage/user/dira/gso/google_scanned_objects/gso_kitchen_collisions")
+        self.acroym_root = Path("/storage/user/dira/gso/google_scanned_objects/gso_kitchen_collisions")
         self.acroym_scales = load_json("data/acronym/acronym_scales.json")
         self.ycb_loader = YCBPathsLoader()
         self.scene = scene
@@ -209,6 +218,97 @@ class ClutterRemovalSim(object):
         self.object_urdfs_g1b = [f for f in self.egad_root.iterdir() if f.name.endswith(".urdf")]
         self.object_urdfs_egad = [f for f in self.egad_root.iterdir() if f.name.endswith(".urdf")]
         self.object_urdfs_acroym = [f for f in self.acroym_root.iterdir() if f.name.endswith(".urdf")]
+        self.object_urdfs_gso = [f for f in self.gso_root.iterdir() if f.name.endswith(".urdf")]
+
+    def load_clip_model(self):
+        """
+        Load CLIP model for feature extraction.
+        """
+        if not CLIP_AVAILABLE:
+            return None, None, None
+            
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        model, preprocess = clip.load("ViT-B/32", device=device)
+        return model, preprocess, device
+
+    def load_targo_category_mapping(self):
+        """
+        Load TARGO category mapping from files.
+        """
+        # Load class names with indices
+        class_names_path = Path("data/targo_category/class_names.json")
+        if not class_names_path.exists():
+            print(f"Warning: {class_names_path} not found. Using default categories.")
+            return {"others": 0}, {}
+            
+        with open(class_names_path, 'r') as f:
+            class_names = json.load(f)
+        
+        # Load object to category mapping
+        vgn_objects_path = Path("data/targo_category/vgn_objects_category.json")
+        if not vgn_objects_path.exists():
+            print(f"Warning: {vgn_objects_path} not found. Using empty mapping.")
+            return class_names, {}
+            
+        with open(vgn_objects_path, 'r') as f:
+            object_category_mapping = json.load(f)
+        
+        return class_names, object_category_mapping
+
+    def extract_object_category_from_path(self, mesh_path, object_category_mapping):
+        """
+        Extract object category from mesh file path using TARGO mapping.
+        """
+        # Extract filename without extension
+        filename = os.path.basename(mesh_path).replace("_textured.obj", "").replace(".obj", "")
+        
+        # Try to get category from TARGO mapping
+        if filename in object_category_mapping:
+            return object_category_mapping[filename]
+        
+        # Fallback: try to extract category from filename
+        parts = filename.split("_")
+        if len(parts) > 1:
+            potential_category = parts[0].lower()
+            return potential_category
+        
+        return "others"
+
+    def extract_clip_features(self, text_prompt, model, device):
+        """Extract CLIP features for a given text prompt."""
+        if not CLIP_AVAILABLE or model is None:
+            return np.zeros(512, dtype=np.float32)
+            
+        text_inputs = torch.cat([clip.tokenize(text_prompt)]).to(device)
+        with torch.no_grad():
+            text_features = model.encode_text(text_inputs)
+            return text_features.cpu().numpy().flatten()
+
+    def generate_clip_features_for_scene(self, scene_name, target_category, model, device):
+        """
+        Generate CLIP features for a scene based on target category.
+        """
+        # Extract CLIP features for target and occluders
+        target_text_prompt = f"a {target_category} to grasp"
+        occluder_text_prompt = "occluders"
+        
+        target_clip_features = self.extract_clip_features(target_text_prompt, model, device)
+        occluder_clip_features = self.extract_clip_features(occluder_text_prompt, model, device)
+        
+        return target_clip_features, occluder_clip_features
+
+    def load_clip_features_from_file(self, scene_name, clip_feat_dir):
+        """
+        Load CLIP features from pre-computed file.
+        """
+        clip_feat_path = Path(clip_feat_dir) / f"{scene_name}.npz"
+        if clip_feat_path.exists():
+            clip_data = np.load(clip_feat_path)
+            target_clip_features = clip_data['targ_clip_features']
+            scene_clip_features = clip_data['scene_clip_features_expanded']
+            return target_clip_features, scene_clip_features
+        return None, None
+
     def save_state(self):
         """
         Save the simulator state so it can be restored if needed.
@@ -221,7 +321,7 @@ class ClutterRemovalSim(object):
         """
         self.world.restore_state(self._snapshot_id)
 
-    def reset(self, object_count, target_id=None, is_ycb=False, is_g1b=False, is_egad=False, is_acronym=False):
+    def reset(self, object_count, target_id=None, is_ycb=False, is_g1b=False, is_egad=False, is_acronym=False, is_gso=False):
         """
         Reset the world, place the table, and generate a scene with objects.
         """
@@ -241,10 +341,16 @@ class ClutterRemovalSim(object):
         self.place_table(table_height)
 
         # Generate either pile or packed scene
-        if self.scene == "pile":
-            self.generate_pile_scene(object_count, table_height, target_id=target_id)
-        elif self.scene == "packed":
-            self.generate_packed_scene(object_count, table_height, target_id=target_id, is_ycb=is_ycb, is_g1b=is_g1b, is_egad=is_egad, is_acronym=is_acronym)
+        if not is_gso:
+            if self.scene == "pile":
+                self.generate_pile_scene(object_count, table_height, target_id=target_id)
+            elif self.scene == "packed":
+                self.generate_packed_scene(object_count, table_height, target_id=target_id, is_ycb=is_ycb, is_g1b=is_g1b, is_egad=is_egad, is_acronym=is_acronym)
+        elif is_gso:
+            if self.scene == "pile":
+                self.generate_gso_pile_scene(object_count, table_height, target_id=target_id)
+            elif self.scene == "packed":
+                self.generate_gso_packed_scene(object_count, table_height, target_id=target_id)
 
     def draw_workspace(self):
         """
@@ -271,10 +377,11 @@ class ClutterRemovalSim(object):
         self.lower = np.r_[lx, ly, lz]
         self.upper = np.r_[ux, uy, uz]
 
-    def generate_pile_scene(self, object_count, table_height, target_id=None):
+    def generate_gso_pile_scene(self, object_count, table_height, target_id=None):
         """
         Generate a 'pile' scene by dropping objects within a box, then removing the box.
         """
+        self.object_urdfs = self.object_urdfs_gso
         urdf = self.urdf_root / "setup" / "box.urdf"
         pose = Transform(Rotation.identity(), np.r_[0.02, 0.02, table_height])
         box = self.world.load_urdf(urdf, pose, scale=1.3)
@@ -288,12 +395,58 @@ class ClutterRemovalSim(object):
             xy = self.rng.uniform(1.0 / 3.0 * self.size, 2.0 / 3.0 * self.size, 2)
             pose = Transform(rotation, np.r_[xy, table_height + 0.2])
             scale = self.rng.uniform(0.18, 0.22)
+            scale *= 0.3
             self.world.load_urdf(urdf_file, pose, scale=self.global_scaling * scale)
             self.wait_for_objects_to_rest(timeout=1.0)
 
         self.world.remove_body(box)
         self.remove_and_wait()
 
+    def generate_gso_packed_scene(self, object_count, table_height, target_id=None):
+        """
+        Generate a 'packed' scene by placing objects next to each other without overlap.
+        
+        For Acronym objects, this method follows a similar approach to TableScene.arrange() in the
+        acronym_tools library, placing objects in stable poses without collisions.
+        """
+        attempts = 0
+        max_attempts = 12
+
+        while self.num_objects < object_count and attempts < max_attempts:
+            self.save_state()
+            object_urdfs = self.object_urdfs_gso
+   
+            # if self.num_objects == 0 and target_id is not None:
+            #     urdf_file = object_urdfs[target_id]
+            # else:
+            urdf_file = self.rng.choice(object_urdfs)
+
+            x = self.rng.uniform(0.08, 0.22)
+            y = self.rng.uniform(0.08, 0.22)
+            z = 1.0
+            angle = self.rng.uniform(0.0, 2.0 * np.pi)
+            rotation = Rotation.from_rotvec(angle * np.r_[0.0, 0.0, 1.0])
+            pose = Transform(rotation, np.r_[x, y, z])
+            
+            scale = self.rng.uniform(0.7, 0.9)
+            scale *= 0.1
+            body = self.world.load_urdf(
+                urdf_file, pose, scale=self.global_scaling * scale
+            )
+            
+            lower, upper = self.world.p.getAABB(body.uid)
+            z = table_height + 0.5 * (upper[2] - lower[2]) + 0.002
+            body.set_pose(pose=Transform(rotation, np.r_[x, y, z]))
+            self.world.step()
+
+            # If it collides or overlaps, remove it
+            if self.world.get_contacts(body):
+                self.world.remove_body(body)
+                self.restore_state()
+            else:
+                self.remove_and_wait()
+            attempts += 1
+            
     def generate_packed_scene(self, object_count, table_height, target_id=None, is_ycb=False, is_g1b=False, is_egad=False, is_acronym=False):
         """
         Generate a 'packed' scene by placing objects next to each other without overlap.
@@ -400,6 +553,8 @@ class ClutterRemovalSim(object):
         hunyuan3D_ptv3=False,
         hunyuan3D_path=None,
         target_category=None,
+        clip_feat_dir=None,
+        use_precomputed_clip=True,
     ):
         """
         Acquire TSDF and point clouds for 'ptv3_clip' model.
@@ -411,6 +566,8 @@ class ClutterRemovalSim(object):
             complete_targ_tsdf: complete target TSDF grid
             grid_targ: partial target TSDF grid
             occ_level: occlusion level
+            target_clip_features: CLIP features for target (512,)
+            scene_clip_features: CLIP features for scene (512,)
         """
         # Setup TSDF volume
         vis_dict = {}
@@ -535,10 +692,335 @@ class ClutterRemovalSim(object):
         
         grid_targ = data["grid_targ"]
 
-        return tsdf, timing, pc_scene_no_targ, complete_targ_pc, complete_targ_tsdf, grid_targ, occ_level, iou_value, cd_value, vis_dict
+        # Load or generate CLIP features
+        target_clip_features = None
+        scene_clip_features = None
+        
+        if curr_mesh_pose_list is not None:
+            scene_name = curr_mesh_pose_list
+            
+            if use_precomputed_clip and clip_feat_dir is not None:
+                # Try to load pre-computed CLIP features
+                target_clip_features, scene_clip_features = self.load_clip_features_from_file(scene_name, clip_feat_dir)
+                
+            if target_clip_features is None:
+                # Generate CLIP features on-the-fly
+                # if target_category is not None:
+                assert target_category is not None, "Target category is not provided"
+                    # Use provided target category
+                model, preprocess, device = self.load_clip_model()
+                target_clip_features, scene_clip_features = self.generate_clip_features_for_scene(
+                    scene_name, target_category, model, device
+                )
+                # else:
+                #     # Try to determine target category from mesh_pose_dict
+                #     try:
+                #         # Load mesh_pose_dict to determine target category
+                #         mesh_pose_path = curr_scene_path.parent.parent / "mesh_pose_dict" / f"{scene_name}.npz"
+                #         if mesh_pose_path.exists():
+                #             mesh_pose_data = np.load(mesh_pose_path, allow_pickle=True)
+                #             mesh_pose_dict = mesh_pose_data["pc"].item()
+                            
+                #             # Load category mapping
+                #             class_names, object_category_mapping = self.load_targo_category_mapping()
+                            
+                #             # Extract target category
+                #             if target_id in mesh_pose_dict:
+                #                 mesh_path = mesh_pose_dict[target_id][0]
+                #                 target_category = self.extract_object_category_from_path(mesh_path, object_category_mapping)
+                                
+                #                 # Generate CLIP features
+                #                 model, preprocess, device = self.load_clip_model()
+                #                 target_clip_features, scene_clip_features = self.generate_clip_features_for_scene(
+                #                     scene_name, target_category, model, device
+                #                 )
+                    # except Exception as e:
+                    #     print(f"Warning: Could not determine target category for {scene_name}: {e}")
+                    #     # Use default features
+                    #     target_clip_features = np.zeros(512, dtype=np.float32)
+                    #     scene_clip_features = np.zeros(512, dtype=np.float32)
+        
+        # If still no CLIP features, use default
+        if target_clip_features is None:
+            target_clip_features = np.zeros(512, dtype=np.float32)
+            scene_clip_features = np.zeros(512, dtype=np.float32)
 
+        return tsdf, timing, pc_scene_no_targ, complete_targ_pc, complete_targ_tsdf, grid_targ, occ_level, iou_value, cd_value, vis_dict, target_clip_features, scene_clip_features
+    
+    def acquire_single_tsdf_target_grid_ptv3_scene_gt(
+        self,
+        curr_scene_path,
+        target_id,
+        resolution=40,
+        model_type=None,
+        curr_mesh_pose_list=None,
+        hunyuan3D_ptv3=False,
+        hunyuan3D_path=None,
+        target_mesh_gt=None,
+        target_category=None,
+        clip_feat_dir=None,
+        use_precomputed_clip=True,
+    ):
+        """
+        Acquire TSDF and point clouds for 'ptv3_clip' model.
+        Returns:
+            tsdf: TSDFVolume object
+            timing: integration time
+            scene_pc_full: normalized + filtered full scene point cloud
+            complete_targ_pc: complete target point cloud
+            complete_targ_tsdf: complete target TSDF grid
+            grid_targ: partial target TSDF grid
+            occ_level: occlusion level
+            target_clip_features: CLIP features for target (512,)
+            scene_clip_features: CLIP features for scene (512,)
+        """
+        # Setup TSDF volume
+        vis_dict = {}
+        assert model_type == "ptv3_scene_gt", f"PTV3ClipImplicit only supports ptv3_clip_gt model type, got {model_type}"
+        tsdf = TSDFVolume(self.size, resolution)
+
+        # Camera pose configuration
+        half_size = self.size / 2
+        origin = Transform(Rotation.identity(), np.r_[half_size, half_size, 0])
+        theta, phi = np.pi / 6.0, 0
+        r = 2.0 * self.size
+        extrinsic = camera_on_sphere(origin, r, theta, phi)
+
+        # Load data from .npz
+        data = np.load(curr_scene_path, allow_pickle=True)
+        depth_img = data["depth_imgs"]
+        vis_dict["depth_img"] = depth_img
+        seg_img = data["segmentation_map"]
+        tgt_mask = data["mask_targ"]
+        scene_mask = data["mask_scene"]
+
+        # Validate masks
+        assert np.all(scene_mask == (seg_img > 0))
+        assert np.all(tgt_mask == (seg_img == target_id))
+
+        # Compute occlusion level
+        occ_level = 0.0
+        if curr_mesh_pose_list is not None:
+            if not self.save_occ_level_dict:
+                occ_level = self.occ_level_dict[curr_mesh_pose_list]
+            else:
+                sim_single = sim_select_scene(self, [0, target_id])
+                _, seg_img_single = sim_single.camera.render_with_seg(extrinsic)[1:3]
+                occ_level = 1 - np.sum(seg_img == target_id) / np.sum(seg_img_single == 1)
+                self.occ_level_dict[curr_mesh_pose_list] = occ_level
+        if occ_level > 0.9:
+            print("High occlusion level")
+
+        # TSDF integration
+        tic = time.time()
+        depth_input = (depth_img * scene_mask)[0].astype(np.float32)
+        tsdf.integrate(depth_input, self.camera.intrinsic, extrinsic)
+
+        timing = time.time() - tic
+
+        ## load plane.npy
+        plane = np.load("/usr/stud/dira/GraspInClutter/grasping/setup/plane_sampled.npy")
+        plane = plane.astype(np.float32)
+        pc_scene_no_targ = np.concatenate([data["pc_scene_no_targ"], plane], axis=0)
+        # scene_pc_scene_no_targ = pc_scene_no_targ / 0.3 - 0.5
+        from utils_giga import filter_and_pad_point_clouds
+        pc_scene_no_targ = filter_and_pad_point_clouds(
+            torch.from_numpy(pc_scene_no_targ).unsqueeze(0).float(),
+            lower_bound=torch.tensor([0, 0, 0]),
+             upper_bound=torch.tensor([0.3, 0.3, 0.3]),
+        ).squeeze(0).numpy()
+        ## concate with plane
+        pc_scene_no_targ = np.concatenate([pc_scene_no_targ, plane], axis=0)
+        pc_scene_no_targ = pc_scene_no_targ / 0.3 - 0.5
+
+        # Load complete target data based on hunyuan3D_ptv3 flag
+        iou_value = 1.0
+        cd_value = 0.0
+        # complete_targ_pc = data["complete_target_pc"]
+        ## generate complete_target_tsdf
+        # try:
+        # complete_target_mesh_vertices = data['complete_target_mesh_vertices']
+        # complete_target_mesh_faces = data['complete_target_mesh_faces']
+        # complete_target_mesh = o3d.geometry.TriangleMesh()
+        # complete_target_mesh.vertices = o3d.utility.Vector3dVector(complete_target_mesh_vertices)
+        # complete_target_mesh.triangles = o3d.utility.Vector3iVector(complete_target_mesh_faces)
+        complete_target_mesh = o3d.geometry.TriangleMesh()
+        complete_target_mesh.vertices = o3d.utility.Vector3dVector(target_mesh_gt.vertices)
+        complete_target_mesh.triangles = o3d.utility.Vector3iVector(target_mesh_gt.faces)
+        ## sample
+        complete_targ_pc = complete_target_mesh.sample_points_poisson_disk(number_of_points=512, init_factor=5)
+        complete_targ_pc = np.asarray(complete_targ_pc.points)
+        # complete_targ_pc = 
+
+        try:
+            complete_target_mesh.compute_vertex_normals()
+            complete_targ_tsdf = mesh_to_tsdf(complete_target_mesh)
+        except:
+            complete_targ_tsdf = point_cloud_to_tsdf(complete_targ_pc)
+
+        complete_targ_tsdf = complete_targ_tsdf
+        # Process complete target point cloud
+        complete_targ_pc = filter_and_pad_point_clouds(
+            torch.from_numpy(complete_targ_pc).unsqueeze(0).float(),
+            lower_bound=torch.tensor([0, 0, 0]),
+            upper_bound=torch.tensor([0.3, 0.3, 0.3]),
+        ).squeeze(0).numpy()
+        complete_targ_pc = complete_targ_pc / 0.3 - 0.5
         
+        grid_targ = data["grid_targ"]
+
+        return tsdf, timing, pc_scene_no_targ, complete_targ_pc, complete_targ_tsdf, grid_targ, occ_level, iou_value, cd_value, vis_dict
         
+
+    def acquire_single_tsdf_target_grid_ptv3_clip_gt(
+        self,
+        curr_scene_path,
+        target_id,
+        resolution=40,
+        model_type=None,
+        curr_mesh_pose_list=None,
+        hunyuan3D_ptv3=False,
+        hunyuan3D_path=None,
+        target_mesh_gt=None,
+        target_category=None,
+        clip_feat_dir=None,
+        use_precomputed_clip=True,
+    ):
+        """
+        Acquire TSDF and point clouds for 'ptv3_clip' model.
+        Returns:
+            tsdf: TSDFVolume object
+            timing: integration time
+            scene_pc_full: normalized + filtered full scene point cloud
+            complete_targ_pc: complete target point cloud
+            complete_targ_tsdf: complete target TSDF grid
+            grid_targ: partial target TSDF grid
+            occ_level: occlusion level
+            target_clip_features: CLIP features for target (512,)
+            scene_clip_features: CLIP features for scene (512,)
+        """
+        # Setup TSDF volume
+        vis_dict = {}
+        assert model_type == "ptv3_clip_gt", f"PTV3ClipImplicit only supports ptv3_clip_gt model type, got {model_type}"
+        tsdf = TSDFVolume(self.size, resolution)
+
+        # Camera pose configuration
+        half_size = self.size / 2
+        origin = Transform(Rotation.identity(), np.r_[half_size, half_size, 0])
+        theta, phi = np.pi / 6.0, 0
+        r = 2.0 * self.size
+        extrinsic = camera_on_sphere(origin, r, theta, phi)
+
+        # Load data from .npz
+        data = np.load(curr_scene_path, allow_pickle=True)
+        depth_img = data["depth_imgs"]
+        vis_dict["depth_img"] = depth_img
+        seg_img = data["segmentation_map"]
+        tgt_mask = data["mask_targ"]
+        scene_mask = data["mask_scene"]
+
+        # Validate masks
+        assert np.all(scene_mask == (seg_img > 0))
+        assert np.all(tgt_mask == (seg_img == target_id))
+
+        # Compute occlusion level
+        occ_level = 0.0
+        if curr_mesh_pose_list is not None:
+            if not self.save_occ_level_dict:
+                occ_level = self.occ_level_dict[curr_mesh_pose_list]
+            else:
+                sim_single = sim_select_scene(self, [0, target_id])
+                _, seg_img_single = sim_single.camera.render_with_seg(extrinsic)[1:3]
+                occ_level = 1 - np.sum(seg_img == target_id) / np.sum(seg_img_single == 1)
+                self.occ_level_dict[curr_mesh_pose_list] = occ_level
+        if occ_level > 0.9:
+            print("High occlusion level")
+
+        # TSDF integration
+        tic = time.time()
+        depth_input = (depth_img * scene_mask)[0].astype(np.float32)
+        tsdf.integrate(depth_input, self.camera.intrinsic, extrinsic)
+
+        timing = time.time() - tic
+
+        ## load plane.npy
+        plane = np.load("/usr/stud/dira/GraspInClutter/grasping/setup/plane_sampled.npy")
+        plane = plane.astype(np.float32)
+        pc_scene_no_targ = np.concatenate([data["pc_scene_no_targ"], plane], axis=0)
+        # scene_pc_scene_no_targ = pc_scene_no_targ / 0.3 - 0.5
+        from utils_giga import filter_and_pad_point_clouds
+        pc_scene_no_targ = filter_and_pad_point_clouds(
+            torch.from_numpy(pc_scene_no_targ).unsqueeze(0).float(),
+            lower_bound=torch.tensor([0, 0, 0]),
+             upper_bound=torch.tensor([0.3, 0.3, 0.3]),
+        ).squeeze(0).numpy()
+        ## concate with plane
+        pc_scene_no_targ = np.concatenate([pc_scene_no_targ, plane], axis=0)
+        pc_scene_no_targ = pc_scene_no_targ / 0.3 - 0.5
+
+        # Load complete target data based on hunyuan3D_ptv3 flag
+        iou_value = 1.0
+        cd_value = 0.0
+        # complete_targ_pc = data["complete_target_pc"]
+        ## generate complete_target_tsdf
+        # try:
+        # complete_target_mesh_vertices = data['complete_target_mesh_vertices']
+        # complete_target_mesh_faces = data['complete_target_mesh_faces']
+        # complete_target_mesh = o3d.geometry.TriangleMesh()
+        # complete_target_mesh.vertices = o3d.utility.Vector3dVector(complete_target_mesh_vertices)
+        # complete_target_mesh.triangles = o3d.utility.Vector3iVector(complete_target_mesh_faces)
+        complete_target_mesh = o3d.geometry.TriangleMesh()
+        complete_target_mesh.vertices = o3d.utility.Vector3dVector(target_mesh_gt.vertices)
+        complete_target_mesh.triangles = o3d.utility.Vector3iVector(target_mesh_gt.faces)
+        ## sample
+        complete_targ_pc = complete_target_mesh.sample_points_poisson_disk(number_of_points=512, init_factor=5)
+        complete_targ_pc = np.asarray(complete_targ_pc.points)
+        # complete_targ_pc = 
+
+        try:
+            complete_target_mesh.compute_vertex_normals()
+            complete_targ_tsdf = mesh_to_tsdf(complete_target_mesh)
+        except:
+            complete_targ_tsdf = point_cloud_to_tsdf(complete_targ_pc)
+
+        complete_targ_tsdf = complete_targ_tsdf
+        # Process complete target point cloud
+        complete_targ_pc = filter_and_pad_point_clouds(
+            torch.from_numpy(complete_targ_pc).unsqueeze(0).float(),
+            lower_bound=torch.tensor([0, 0, 0]),
+            upper_bound=torch.tensor([0.3, 0.3, 0.3]),
+        ).squeeze(0).numpy()
+        complete_targ_pc = complete_targ_pc / 0.3 - 0.5
+        
+        grid_targ = data["grid_targ"]
+
+        # Load or generate CLIP features
+        target_clip_features = None
+        scene_clip_features = None
+        
+        if curr_mesh_pose_list is not None:
+            scene_name = curr_mesh_pose_list
+            
+            if use_precomputed_clip and clip_feat_dir is not None:
+                # Try to load pre-computed CLIP features
+                target_clip_features, scene_clip_features = self.load_clip_features_from_file(scene_name, clip_feat_dir)
+                
+            if target_clip_features is None:
+                # Generate CLIP features on-the-fly
+                # if target_category is not None:
+                assert target_category is not None, "Target category is not provided"
+                    # Use provided target category
+                model, preprocess, device = self.load_clip_model()
+                target_clip_features, scene_clip_features = self.generate_clip_features_for_scene(
+                    scene_name, target_category, model, device
+                )
+        
+        # If still no CLIP features, use default
+        if target_clip_features is None:
+            target_clip_features = np.zeros(512, dtype=np.float32)
+            scene_clip_features = np.zeros(512, dtype=np.float32)
+
+        return tsdf, timing, pc_scene_no_targ, complete_targ_pc, complete_targ_tsdf, grid_targ, occ_level, iou_value, cd_value, vis_dict, target_clip_features, scene_clip_features        
     def acquire_single_tsdf_target_grid_ptv3_scene(
         self,
         curr_scene_path,

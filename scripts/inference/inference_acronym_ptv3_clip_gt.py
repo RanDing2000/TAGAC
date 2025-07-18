@@ -11,7 +11,7 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Grasp planner modules - 专门使用PTV3SceneImplicit
-from src.vgn.detection_ptv3_implicit import PTV3ClipImplicit
+from src.vgn.detection_ptv3_implicit import PTV3ClipGTImplicit
 
 # Only keep target_sample_offline
 from src.vgn.experiments import target_sample_offline_acronym   
@@ -39,7 +39,9 @@ def create_and_write_args_to_result_path(args):
     Create a result directory for ptv3_scene model results on ACRONYM dataset.
     Then write the command-line arguments to a text file in that directory.
     """
-    model_name = 'ptv3_clip'
+    model_name = 'ptv3_clip_gt'
+    if args.high_res:
+        model_name += '_hr'
     result_directory = f'{args.result_root}/{model_name}'
     if not os.path.exists(result_directory):
         os.makedirs(result_directory)
@@ -80,6 +82,7 @@ def main(args):
     print(f"Shape completion: {args.shape_completion}")
     if args.shape_completion:
         print(f"SC model path: {args.sc_model_path}")
+    print(f"High resolution: {args.high_res} (resolution: {60 if args.high_res else 40})")
     print(f"Hunyuan3D enabled: {args.hunyuan3D_ptv3}")
     if args.hunyuan3D_ptv3:
         print(f"Hunyuan3D path: {args.hunyuan3D_path}")
@@ -88,9 +91,10 @@ def main(args):
     print("=" * 60)
     
     # Create PTV3SceneImplicit grasp planner (专门为ptv3_clip设计)
-    grasp_planner = PTV3ClipImplicit(
+    resolution = 60 if args.high_res else 40
+    grasp_planner = PTV3ClipGTImplicit(
         args.model,
-        'ptv3_clip',  # 固定使用ptv3_clip  
+        'ptv3_clip_gt',  # 固定使用ptv3_clip  
         best=args.best,
         qual_th=args.qual_th,
         force_detection=args.force,
@@ -99,6 +103,7 @@ def main(args):
         visualize=args.vis,
         sc_model_path=args.sc_model_path if args.shape_completion else None,
         cd_iou_measure=True,
+        resolution=resolution,
     )
     
     result_path = create_and_write_args_to_result_path(args)
@@ -120,13 +125,14 @@ def main(args):
         add_noise=None,
         sideview=args.sideview,
         visualize=args.vis,
-        type='ptv3_clip',  # 确保类型一致
+        type='ptv3_clip_gt',  # 确保类型一致
         test_root=args.test_root,
         occ_level_dict_path=args.occ_level_dict,
         hunyun2_path=args.hunyun2_path,
+        resolution=resolution,
         hunyuan3D_ptv3=args.hunyuan3D_ptv3,
         hunyuan3D_path=args.hunyuan3D_path,
-        model_type='ptv3_clip',  # 确保模型类型一致
+        model_type='ptv3_clip_gt',  # 确保模型类型一致
         video_recording=args.video_recording,
         target_file_path=args.target_file,
         max_scenes=args.max_scenes if hasattr(args, 'max_scenes') else 0,  # 支持限制场景数量
@@ -179,14 +185,16 @@ if __name__ == "__main__":
                         help="Path to occlusion level dictionary JSON file")
     
     # Inference parameters
-    parser.add_argument("--out_th", type=float, default=0.6,
+    parser.add_argument("--out_th", type=float, default=0.2,
                         help="Output threshold for valid grasps.")
-    parser.add_argument("--qual-th", type=float, default=0.9,
+    parser.add_argument("--qual-th", type=float, default=0.5,
                         help="Quality threshold for valid grasps.")
     parser.add_argument("--best", type=str2bool, default=True,
                         help="Use the best valid grasp if available.")
     parser.add_argument("--force", type=str2bool, default=True,
                         help="Force selection of a grasp even if below threshold.")
+    parser.add_argument("--high_res", type=str2bool, default=True,
+                        help="Use high resolution (60) if True, otherwise use standard resolution (40).")
     parser.add_argument("--max_scenes", type=int, default=0,
                         help="Maximum number of scenes to process (0 for all)")
     
@@ -207,7 +215,7 @@ if __name__ == "__main__":
     # Visualization and debugging
     parser.add_argument("--sim-gui", type=str2bool, default=False,
                         help="Whether to enable a simulation GUI.")
-    parser.add_argument("--vis", type=str2bool, default=True,
+    parser.add_argument("--vis", type=str2bool, default=False,
                         help="Whether to visualize and save the affordance map.")
     parser.add_argument("--video-recording", type=str2bool, default=True,
                         help="Whether to record videos of grasping attempts.")

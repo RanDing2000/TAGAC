@@ -103,14 +103,15 @@ def main(args):
     """
     # Choose VGN or VGNImplicit depending on 'args.type'
     if args.type == 'vgn':
-        grasp_planner = VGN( # it's not used in this scrifpt
+        grasp_planner = VGN(
             args.model,
             args.type,
             best=args.best,
             qual_th=args.qual_th,
             force_detection=args.force,
-            out_th=args.out_th if hasattr(args, 'out_th') and args.out_th is not None else 0.5,  # Use args.out_th if provided, otherwise default to 0.5
-            visualize=args.vis
+            out_th=args.out_th if hasattr(args, 'out_th') and args.out_th is not None else 0.5,
+            visualize=args.vis,
+            cd_iou_measure=True  # Enable CD and IoU measurement for VGN
         )
     elif args.type in ['giga', 'giga_aff', 'giga_hr', 'targo', 'targo_full_targ', 'targo_hunyun2', 'targo_ptv3', 'ptv3_scene',
                       'FGC-GraspNet', 'AnyGrasp', 'AnyGrasp_full_targ', 'FGC_full_targ']:
@@ -172,7 +173,7 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--type", default="targo",
+    parser.add_argument("--type", default="vgn",
                         choices=["giga", "vgn", "targo", "targo_full_targ", "targo_hunyun2", "targo_ptv3", "ptv3_scene",
                                  "FGC-GraspNet", "AnyGrasp", "AnyGrasp_full_targ", "FGC_full_targ"],
                         help="Model type: giga_hr | giga_aff | giga | vgn | targo | targo_full_targ | targo_hunyun2 | targo_ptv3 | ptv3_scene | FGC-GraspNet | AnyGrasp | AnyGrasp_full_targ | FGC_full_targ")
@@ -190,7 +191,7 @@ if __name__ == "__main__":
                         help="Optional experiment description.")
     parser.add_argument("--test_root", type=str,
                         default=None)
-    parser.add_argument("--model", type=Path, default='checkpoints/targonet.pt')
+    parser.add_argument("--model", type=Path, default='checkpoints/vgn_packed.pt')
     parser.add_argument("--out_th", type=float, default=0.5,
                         help="Output threshold for valid grasps.")
     parser.add_argument("--scene", type=str, choices=["pile", "packed"], default="packed")
