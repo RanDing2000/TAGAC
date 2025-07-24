@@ -63,3 +63,5 @@ src/**/__pycache__/
 **/*.pyc
 *.json
 *.csv
+*.mp4
+messy_kitchen_scenes/

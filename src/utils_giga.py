@@ -6,12 +6,15 @@ import mcubes
 import numpy as np
 import json
 import h5py
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.vgn.utils import visual
 from collections import OrderedDict
 # Load and parse URDF files
 from urdfpy import URDF
 from torch import nn
 # from vgn.simulation import ClutterRemovalSim
+
 from src.vgn.utils.implicit import *
 # from vgn.simulation import ClutterRemovalSim
 from src.vgn.perception import *

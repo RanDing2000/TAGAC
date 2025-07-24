@@ -4,6 +4,9 @@ import trimesh
 from scipy import ndimage
 import torch
 import os
+from sklearn.decomposition import PCA
+import matplotlib.pyplot as plt
+import matplotlib.cm as cm
 
 from src.vgn.grasp import *
 from src.vgn.utils.transform import Transform, Rotation
@@ -719,6 +722,18 @@ class PTV3SceneImplicit(object):
         # Transform grasps to world coordinates
         new_grasps = []
         if len(grasps) > 0:
+            # Define random offsets for grasps
+            offset_list = [
+                Transform(Rotation.identity(), [0.0, 0.0, -0.02]),
+                Transform(Rotation.identity(), [0.0, 0.0, -0.04]),
+                Transform(Rotation.identity(), [0.0, 0.0, -0.03]),
+                Transform(Rotation.identity(), [0.0, 0.0, -0.01]),
+                Transform(Rotation.identity(), [0.0, 0.0, 0.01]),
+                Transform(Rotation.identity(), [0.0, 0.0, 0.02]),
+                Transform(Rotation.identity(), [0.0, 0.0, 0.03]),
+                Transform(Rotation.identity(), [0.0, 0.0, 0.04])
+            ]
+            
             if self.best:
                 p = np.arange(len(grasps))
             else:
@@ -727,6 +742,11 @@ class PTV3SceneImplicit(object):
                 pose = g.pose
                 pose.translation = (pose.translation + 0.5) * size
                 width = g.width * size
+                
+                # Apply random offset
+                random_offset = np.random.choice(offset_list)
+                pose = pose * random_offset  # Apply offset transform
+                
                 new_grasps.append(Grasp(pose, width))
             scores = scores[p]
         grasps = new_grasps
@@ -777,9 +797,6 @@ class PTV3SceneImplicit(object):
                 width=800, 
                 height=600
             )
-            composed_scene_glb = composed_scene.export(file_type='glb')
-            with open(f"{state.vis_path}/ptv3_scene_composed_visual.glb", "wb") as f:
-                f.write(composed_scene_glb)
             
             if render_composed_success:
                 print("✓ Successfully rendered composed scene with PyVista")
@@ -1017,9 +1034,68 @@ class PTV3ClipImplicit(object):
             inputs = (scene_pc, scene_clip_features)
             # np.savez(clip_feat_path, **inputs)
             np.savez(clip_feat_path, scene_pc=inputs[0], scene_clip_features=inputs[1])
+            
+            # Visualize CLIP features
+            if hasattr(state, 'vis_path') and state.vis_path:
+                print("🎨 Visualizing CLIP features...")
+                clip_vis_dir = os.path.join(state.vis_path, 'clip_features')
+                os.makedirs(clip_vis_dir, exist_ok=True)
+                
+                # PCA visualization
+                visualize_clip_features_pca(
+                    scene_pc, scene_clip_features,
+                    os.path.join(clip_vis_dir, 'clip_features_pca.ply'),
+                    "CLIP Features PCA Visualization"
+                )
+                
+                # Heatmap visualization
+                visualize_clip_features_heatmap(
+                    scene_clip_features,
+                    os.path.join(clip_vis_dir, 'clip_features_heatmap.png'),
+                    "CLIP Features Heatmap"
+                )
+                
+                # Statistical analysis
+                visualize_clip_features_statistics(
+                    scene_clip_features, target_clip_features, occluder_clip_features,
+                    clip_vis_dir
+                )
+                
+                # Save raw data for further analysis
+                save_clip_features_data(
+                    scene_pc, scene_clip_features,
+                    os.path.join(clip_vis_dir, 'clip_features_data.npz')
+                )
+                
+                # Add to visual dict for tracking
+                visual_dict['clip_features_vis_dir'] = clip_vis_dir
+                visual_dict['clip_features_pca_path'] = os.path.join(clip_vis_dir, 'clip_features_pca.ply')
+                visual_dict['clip_features_heatmap_path'] = os.path.join(clip_vis_dir, 'clip_features_heatmap.png')
+                
         else:
             inputs = np.load(clip_feat_path, allow_pickle=True)
             inputs = (inputs['scene_pc'], inputs['scene_clip_features'])
+            
+            # Also visualize loaded CLIP features
+            if hasattr(state, 'vis_path') and state.vis_path:
+                print("🎨 Visualizing loaded CLIP features...")
+                scene_pc, scene_clip_features = inputs
+                clip_vis_dir = os.path.join(state.vis_path, 'clip_features')
+                os.makedirs(clip_vis_dir, exist_ok=True)
+                
+                # PCA visualization
+                visualize_clip_features_pca(
+                    scene_pc, scene_clip_features,
+                    os.path.join(clip_vis_dir, 'clip_features_pca_loaded.ply'),
+                    "Loaded CLIP Features PCA Visualization"
+                )
+                
+                # Heatmap visualization  
+                visualize_clip_features_heatmap(
+                    scene_clip_features,
+                    os.path.join(clip_vis_dir, 'clip_features_heatmap_loaded.png'),
+                    "Loaded CLIP Features Heatmap"
+                )
         
         voxel_size, size = state.voxel_size, state.size
         
@@ -1075,10 +1151,27 @@ class PTV3ClipImplicit(object):
                 p = np.arange(len(grasps))
             else:
                 p = np.random.permutation(len(grasps))
+            # Define random offsets for grasps
+            offset_list = [
+                Transform(Rotation.identity(), [0.0, 0.0, -0.02]),
+                Transform(Rotation.identity(), [0.0, 0.0, -0.04]),
+                Transform(Rotation.identity(), [0.0, 0.0, -0.03]),
+                Transform(Rotation.identity(), [0.0, 0.0, -0.01]),
+                Transform(Rotation.identity(), [0.0, 0.0, 0.01]),
+                Transform(Rotation.identity(), [0.0, 0.0, 0.02]),
+                Transform(Rotation.identity(), [0.0, 0.0, 0.03]),
+                Transform(Rotation.identity(), [0.0, 0.0, 0.04])
+            ]
+            
             for g in grasps[p]:
                 pose = g.pose
                 pose.translation = (pose.translation + 0.5) * size
                 width = g.width * size
+                
+                # Apply random offset
+                random_offset = np.random.choice(offset_list)
+                pose = pose * random_offset  # Apply offset transform
+                
                 new_grasps.append(Grasp(pose, width))
             scores = scores[p]
         grasps = new_grasps
@@ -1098,7 +1191,7 @@ class PTV3ClipImplicit(object):
                 T_world_pregrasp = T_world_grasp * T_grasp_pregrasp
                 
                 # Create a Grasp object for pre-grasp position using the same width
-                pregrasp_grasp = Grasp(T_world_pregrasp, 0.06)
+                pregrasp_grasp = Grasp(T_world_pregrasp, 0.05)
                 
                 # Create pre-grasp mesh using grasp2mesh with a dummy score
                 pre_grasp_mesh = visual.grasp2mesh(pregrasp_grasp, 0.5)  # Use 0.5 as dummy score
@@ -1120,24 +1213,10 @@ class PTV3ClipImplicit(object):
             for i, pre_grasp_mesh in enumerate(pre_grasp_mesh_list):
                 composed_scene.add_geometry(pre_grasp_mesh, node_name=f'pregrasp_{i}')
 
+            # Save original composed scene GLB
             composed_scene_glb = composed_scene.export(file_type='glb')
             with open(f"{state.vis_path}/ptv3_scene_composed_visual.glb", "wb") as f:
                 f.write(composed_scene_glb)
-            
-            visual_dict['composed_scene'] = composed_scene
-            
-            # Render composed scene with PyVista
-            render_composed_success = render_scene_with_pyvista(
-                composed_scene, 
-                output_path=f"{state.vis_path}/ptv3_scene_composed_visual.png",
-                width=800, 
-                height=600
-            )
-            
-            if render_composed_success:
-                print("✓ Successfully rendered composed scene with PyVista")
-            else:
-                print("✗ Failed to render composed scene with PyVista")
             
             # Generate colored scene point cloud from RGB image if available
             if hasattr(state, 'vis_dict') and state.vis_dict is not None:
@@ -1287,7 +1366,7 @@ class PTV3ClipGTImplicit(object):
         
         Args:
             model_path: path to the trained model
-            model_type: must be 'ptv3_clip'
+            model_type: must be 'ptv3_clip_gt'
             best: whether to return only the best grasp
             force_detection: whether to force detection even with low quality
             qual_th: quality threshold for grasp selection
@@ -1370,9 +1449,68 @@ class PTV3ClipGTImplicit(object):
             inputs = (scene_pc, scene_clip_features)
             # np.savez(clip_feat_path, **inputs)
             np.savez(clip_feat_gt_path, scene_pc=inputs[0], scene_clip_features=inputs[1])
+            
+            # Visualize CLIP features for GT model
+            if hasattr(state, 'vis_path') and state.vis_path:
+                print("🎨 Visualizing CLIP GT features...")
+                clip_vis_dir = os.path.join(state.vis_path, 'clip_features_gt')
+                os.makedirs(clip_vis_dir, exist_ok=True)
+                
+                # PCA visualization
+                visualize_clip_features_pca(
+                    scene_pc, scene_clip_features,
+                    os.path.join(clip_vis_dir, 'clip_features_gt_pca.ply'),
+                    "CLIP GT Features PCA Visualization"
+                )
+                
+                # Heatmap visualization
+                visualize_clip_features_heatmap(
+                    scene_clip_features,
+                    os.path.join(clip_vis_dir, 'clip_features_gt_heatmap.png'),
+                    "CLIP GT Features Heatmap"
+                )
+                
+                # Statistical analysis
+                visualize_clip_features_statistics(
+                    scene_clip_features, target_clip_features, occluder_clip_features,
+                    clip_vis_dir
+                )
+                
+                # Save raw data for further analysis
+                save_clip_features_data(
+                    scene_pc, scene_clip_features,
+                    os.path.join(clip_vis_dir, 'clip_features_gt_data.npz')
+                )
+                
+                # Add to visual dict for tracking
+                visual_dict['clip_features_gt_vis_dir'] = clip_vis_dir
+                visual_dict['clip_features_gt_pca_path'] = os.path.join(clip_vis_dir, 'clip_features_gt_pca.ply')
+                visual_dict['clip_features_gt_heatmap_path'] = os.path.join(clip_vis_dir, 'clip_features_gt_heatmap.png')
+                
         else:
             inputs = np.load(clip_feat_gt_path, allow_pickle=True)
             inputs = (inputs['scene_pc'], inputs['scene_clip_features'])
+            
+            # Also visualize loaded CLIP GT features
+            if hasattr(state, 'vis_path') and state.vis_path:
+                print("🎨 Visualizing loaded CLIP GT features...")
+                scene_pc, scene_clip_features = inputs
+                clip_vis_dir = os.path.join(state.vis_path, 'clip_features_gt')
+                os.makedirs(clip_vis_dir, exist_ok=True)
+                
+                # PCA visualization
+                visualize_clip_features_pca(
+                    scene_pc, scene_clip_features,
+                    os.path.join(clip_vis_dir, 'clip_features_gt_pca_loaded.ply'),
+                    "Loaded CLIP GT Features PCA Visualization"
+                )
+                
+                # Heatmap visualization
+                visualize_clip_features_heatmap(
+                    scene_clip_features,
+                    os.path.join(clip_vis_dir, 'clip_features_gt_heatmap_loaded.png'),
+                    "Loaded CLIP GT Features Heatmap"
+                )
         
         voxel_size, size = state.voxel_size, state.size
         
@@ -1424,6 +1562,18 @@ class PTV3ClipGTImplicit(object):
         # Transform grasps to world coordinates
         new_grasps = []
         if len(grasps) > 0:
+            # Define random offsets for grasps
+            offset_list = [
+                Transform(Rotation.identity(), [0.0, 0.0, -0.02]),
+                Transform(Rotation.identity(), [0.0, 0.0, -0.04]),
+                Transform(Rotation.identity(), [0.0, 0.0, -0.03]),
+                Transform(Rotation.identity(), [0.0, 0.0, -0.01]),
+                Transform(Rotation.identity(), [0.0, 0.0, 0.01]),
+                Transform(Rotation.identity(), [0.0, 0.0, 0.02]),
+                Transform(Rotation.identity(), [0.0, 0.0, 0.03]),
+                Transform(Rotation.identity(), [0.0, 0.0, 0.04])
+            ]
+            
             if self.best:
                 p = np.arange(len(grasps))
             else:
@@ -1432,6 +1582,11 @@ class PTV3ClipGTImplicit(object):
                 pose = g.pose
                 pose.translation = (pose.translation + 0.5) * size
                 width = g.width * size
+                
+                # Apply random offset
+                random_offset = np.random.choice(offset_list)
+                pose = pose * random_offset  # Apply offset transform
+                
                 new_grasps.append(Grasp(pose, width))
             scores = scores[p]
         grasps = new_grasps
@@ -1635,7 +1790,7 @@ class PTV3SceneGTImplicit(object):
         
         Args:
             model_path: path to the trained model
-            model_type: must be 'ptv3_scene'
+            model_type: must be 'ptv3_scene_gt'
             best: whether to return only the best grasp
             force_detection: whether to force detection even with low quality
             qual_th: quality threshold for grasp selection
@@ -2092,6 +2247,178 @@ def save_colored_point_cloud_as_ply(points_with_colors, output_path):
         for point in points_with_colors:
             x, y, z, r, g, b = point
             f.write(f"{x:.6f} {y:.6f} {z:.6f} {int(r)} {int(g)} {int(b)}\n")
+
+
+def visualize_clip_features_pca(scene_pc, scene_clip_features, output_path, title="CLIP Features PCA Visualization"):
+    """
+    Visualize CLIP features using PCA to map to RGB colors.
+    
+    Args:
+        scene_pc: Point cloud coordinates (N, 3)
+        scene_clip_features: CLIP features (N, feature_dim)
+        output_path: Path to save the visualization
+        title: Title for the visualization
+    """
+    try:
+        # Apply PCA to reduce CLIP features to 3 dimensions (RGB)
+        pca = PCA(n_components=3)
+        features_3d = pca.fit_transform(scene_clip_features)
+        
+        # Normalize to [0, 1] range
+        features_3d = (features_3d - features_3d.min(axis=0)) / (features_3d.max(axis=0) - features_3d.min(axis=0) + 1e-8)
+        
+        # Convert to RGB colors (0-255)
+        rgb_colors = (features_3d * 255).astype(np.uint8)
+        
+        # Combine point cloud with colors
+        colored_pc = np.hstack([scene_pc, rgb_colors])
+        
+        # Save as PLY file
+        save_colored_point_cloud_as_ply(colored_pc, output_path)
+        
+        print(f"✓ CLIP features PCA visualization saved to: {output_path}")
+        print(f"✓ PCA explained variance ratio: {pca.explained_variance_ratio_}")
+        
+        return colored_pc, pca.explained_variance_ratio_
+        
+    except Exception as e:
+        print(f"✗ Error visualizing CLIP features with PCA: {e}")
+        import traceback
+        traceback.print_exc()
+        return None, None
+
+
+def visualize_clip_features_heatmap(scene_clip_features, output_path, title="CLIP Features Heatmap"):
+    """
+    Create a heatmap visualization of CLIP features.
+    
+    Args:
+        scene_clip_features: CLIP features (N, feature_dim)
+        output_path: Path to save the heatmap
+        title: Title for the heatmap
+    """
+    try:
+        plt.figure(figsize=(12, 8))
+        
+        # Create heatmap of features (sample subset if too many points)
+        max_points = 1000
+        if len(scene_clip_features) > max_points:
+            indices = np.random.choice(len(scene_clip_features), max_points, replace=False)
+            features_subset = scene_clip_features[indices]
+        else:
+            features_subset = scene_clip_features
+        
+        # Plot heatmap
+        im = plt.imshow(features_subset.T, aspect='auto', cmap='viridis', interpolation='nearest')
+        plt.colorbar(im, label='Feature Value')
+        plt.xlabel('Point Index')
+        plt.ylabel('Feature Dimension')
+        plt.title(title)
+        
+        # Save the plot
+        plt.tight_layout()
+        plt.savefig(output_path, dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        print(f"✓ CLIP features heatmap saved to: {output_path}")
+        
+    except Exception as e:
+        print(f"✗ Error creating CLIP features heatmap: {e}")
+        import traceback
+        traceback.print_exc()
+
+
+def visualize_clip_features_statistics(scene_clip_features, target_clip_features, occluder_clip_features, output_dir):
+    """
+    Create statistical visualizations of CLIP features.
+    
+    Args:
+        scene_clip_features: Combined scene CLIP features
+        target_clip_features: Target object CLIP features  
+        occluder_clip_features: Occluder CLIP features
+        output_dir: Directory to save visualizations
+    """
+    try:
+        # Feature statistics
+        target_mean = np.mean(target_clip_features, axis=0)
+        occluder_mean = np.mean(occluder_clip_features, axis=0)
+        target_std = np.std(target_clip_features, axis=0)
+        occluder_std = np.std(occluder_clip_features, axis=0)
+        
+        # Plot feature means comparison
+        plt.figure(figsize=(12, 6))
+        plt.subplot(1, 2, 1)
+        feature_indices = np.arange(len(target_mean))
+        plt.plot(feature_indices, target_mean, label='Target', color='red', alpha=0.7)
+        plt.plot(feature_indices, occluder_mean, label='Occluder', color='blue', alpha=0.7)
+        plt.xlabel('Feature Dimension')
+        plt.ylabel('Mean Value')
+        plt.title('CLIP Features: Mean Comparison')
+        plt.legend()
+        plt.grid(True, alpha=0.3)
+        
+        # Plot feature standard deviations comparison
+        plt.subplot(1, 2, 2)
+        plt.plot(feature_indices, target_std, label='Target', color='red', alpha=0.7)
+        plt.plot(feature_indices, occluder_std, label='Occluder', color='blue', alpha=0.7)
+        plt.xlabel('Feature Dimension')
+        plt.ylabel('Standard Deviation')
+        plt.title('CLIP Features: Std Comparison')
+        plt.legend()
+        plt.grid(True, alpha=0.3)
+        
+        plt.tight_layout()
+        stats_path = os.path.join(output_dir, 'clip_features_statistics.png')
+        plt.savefig(stats_path, dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        # Calculate and save feature similarity
+        similarity = np.dot(target_mean, occluder_mean) / (np.linalg.norm(target_mean) * np.linalg.norm(occluder_mean))
+        
+        # Save statistics to text file
+        stats_text_path = os.path.join(output_dir, 'clip_features_statistics.txt')
+        with open(stats_text_path, 'w') as f:
+            f.write("CLIP Features Statistics\n")
+            f.write("=" * 30 + "\n")
+            f.write(f"Target features shape: {target_clip_features.shape}\n")
+            f.write(f"Occluder features shape: {occluder_clip_features.shape}\n")
+            f.write(f"Scene features shape: {scene_clip_features.shape}\n")
+            f.write(f"Target mean norm: {np.linalg.norm(target_mean):.6f}\n")
+            f.write(f"Occluder mean norm: {np.linalg.norm(occluder_mean):.6f}\n")
+            f.write(f"Feature similarity (cosine): {similarity:.6f}\n")
+            f.write(f"Target features range: [{target_clip_features.min():.6f}, {target_clip_features.max():.6f}]\n")
+            f.write(f"Occluder features range: [{occluder_clip_features.min():.6f}, {occluder_clip_features.max():.6f}]\n")
+        
+        print(f"✓ CLIP features statistics saved to: {stats_path}")
+        print(f"✓ CLIP features statistics text saved to: {stats_text_path}")
+        print(f"✓ Target-Occluder feature similarity: {similarity:.6f}")
+        
+    except Exception as e:
+        print(f"✗ Error creating CLIP features statistics: {e}")
+        import traceback
+        traceback.print_exc()
+
+
+def save_clip_features_data(scene_pc, scene_clip_features, output_path):
+    """
+    Save CLIP features and point cloud data as numpy arrays.
+    
+    Args:
+        scene_pc: Point cloud coordinates (N, 3)
+        scene_clip_features: CLIP features (N, feature_dim)
+        output_path: Path to save the data
+    """
+    try:
+        np.savez(
+            output_path,
+            scene_pc=scene_pc,
+            scene_clip_features=scene_clip_features
+        )
+        print(f"✓ CLIP features data saved to: {output_path}")
+    except Exception as e:
+        print(f"✗ Error saving CLIP features data: {e}")
+        import traceback
+        traceback.print_exc()
 
 # 在文件末尾添加测试调用
 if __name__ == "__main__":

@@ -205,7 +205,7 @@ if __name__ == "__main__":
                         help="Experiment description.")
     
     # Visualization and debugging
-    parser.add_argument("--sim-gui", type=str2bool, default=False,
+    parser.add_argument("--sim-gui", type=str2bool, default=True,
                         help="Whether to enable a simulation GUI.")
     parser.add_argument("--vis", type=str2bool, default=False,
                         help="Whether to visualize and save the affordance map.")
