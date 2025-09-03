@@ -2,7 +2,7 @@ import os
 import re
 
 # 定义要处理的目录
-urdf_dir = "/usr/stud/dira/GraspInClutter/targo/data/acronym/urdfs_acronym"
+urdf_dir = "/home/ran.ding/projects/TARGO/data//acronym/urdfs_acronym"
 
 # 定义要替换的路径前缀
 old_prefix = "../ShapeNetSem-backup/models-OBJ/models/"

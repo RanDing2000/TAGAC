@@ -200,7 +200,7 @@ def save_error_files_to_txt(error_files, script_dir, dataset_name="acronym"):
 def main():
     parser = argparse.ArgumentParser(description='Add complete_target_tsdf to ACRONYM dataset scenes')
     parser.add_argument('--dataset_path', type=str, 
-                       default='/usr/stud/dira/GraspInClutter/targo/data_scenes/acronym/acronym-slight-occlusion-1000',
+                       default='data_scenes/acronym/acronym-slight-occlusion-1000',
                        help='Path to ACRONYM dataset directory')
     parser.add_argument('--max_scenes', type=int, default=None,
                        help='Maximum number of scenes to process (default: all)')

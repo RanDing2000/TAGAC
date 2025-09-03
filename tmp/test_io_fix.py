@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 
 # Test the fixed function
-dataset_path = Path('/storage/user/dira/nips_data_version6/combined/targo_dataset')
+dataset_path = Path('/home/ran.ding/projects/TARGO/data/nips_data_version6/combined/targo_dataset')
 
 # Test with a single scene
 single_scenes = list(dataset_path.glob('scenes/*_s_*.npz'))

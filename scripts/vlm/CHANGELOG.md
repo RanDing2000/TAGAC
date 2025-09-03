@@ -109,7 +109,7 @@ except ImportError as e:
 #### 命令行参数
 ```python
 parser.add_argument('--image_path', type=str, 
-                   default="/usr/stud/dira/GraspInClutter/targo/scripts/demo/image.png",
+                   default="/home/ran.ding/projects/TARGO/scripts/demo/image.png",
                    help='Path to input image')
 parser.add_argument('--text_prompt', type=str, default="black figure",
                    help='Text prompt for object detection')

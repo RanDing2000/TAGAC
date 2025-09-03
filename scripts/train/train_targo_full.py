@@ -46,7 +46,7 @@ except ImportError:
     print("✗ wandb not available - continuing without experiment tracking")
 
 # Add validation evaluation modules path
-sys.path.append('/usr/stud/dira/GraspInClutter/targo/scripts')
+sys.path.append('/home/ran.ding/projects/TARGO/scripts')
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -848,11 +848,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train TARGO with flexible target configuration")
     parser.add_argument("--net", default="targo_full_targ", choices=["targo_full_targ"], 
                         help="Network type: targo (original TARGO architecture)")
-    parser.add_argument("--dataset", type=Path, default='/storage/user/dira/nips_data_version6/combined/targo_dataset')
+    parser.add_argument("--dataset", type=Path, default='/home/ran.ding/projects/TARGO/data/nips_data_version6/combined/targo_dataset')
     parser.add_argument("--data_contain", type=str, default="pc and targ_grid", help="Data content specification")
     parser.add_argument("--decouple", type=str2bool, default=False, help="Decouple flag")
-    parser.add_argument("--dataset_raw", type=Path, default='/storage/user/dira/nips_data_version6/combined/targo_dataset')
-    parser.add_argument("--logdir", type=Path, default="/usr/stud/dira/GraspInClutter/grasping/train_logs_targo")
+    parser.add_argument("--dataset_raw", type=Path, default='/home/ran.ding/projects/TARGO/data/nips_data_version6/combined/targo_dataset')
+    parser.add_argument("--logdir", type=Path, default="/home/ran.ding/projects/TARGO/train_logs_targo")
     parser.add_argument("--description", type=str, default="targo_training")
     parser.add_argument("--savedir", type=str, default="")
     parser.add_argument("--epochs", type=int, default=50)
@@ -877,10 +877,10 @@ if __name__ == "__main__":
     
     # Shape completion parameters (only used when shape_completion=True)
     parser.add_argument("--sc_model_config", type=str, 
-                        default="/usr/stud/dira/GraspInClutter/grasping/src/shape_completion/configs/stso/AdaPoinTr.yaml",
+                        default="/home/ran.ding/projects/TARGO/src/shape_completion/configs/stso/AdaPoinTr.yaml",
                         help="Path to shape completion model config")
     parser.add_argument("--sc_model_checkpoint", type=str,
-                        default="/usr/stud/dira/GraspInClutter/grasping/checkpoints_gaussian/sc_net/ckpt-best_0425.pth",
+                        default="/home/ran.ding/projects/TARGO/checkpoints_gaussian/sc_net/ckpt-best_0425.pth",
                         help="Path to shape completion model checkpoint")
 
     # Wandb parameters

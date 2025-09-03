@@ -750,7 +750,7 @@ def save_scene_as_combined_mesh(sim, scene_id, mesh_pose_dict, output_dir, extri
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--root",type=Path, default= '/usr/stud/dira/GraspInClutter/targo/messy_kitchen_scenes/gso_pile')
+    parser.add_argument("--root",type=Path, default= '/home/ran.ding/projects/TARGO/messy_kitchen_scenes/gso_pile')
     parser.add_argument("--scene", type=str, choices=["pile", "packed"], default="pile")
     parser.add_argument("--object-set", type=str, default="packed/train")
     parser.add_argument("--num-grasps", type=int, default=10000)

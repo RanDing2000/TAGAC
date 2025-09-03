@@ -115,13 +115,13 @@ def main():
     
     # Dataset paths
     parser.add_argument("--dataset", type=Path, 
-                        default='/storage/user/dira/nips_data_version6/combined/targo_dataset',
+                        default='/home/ran.ding/projects/TARGO/data/nips_data_version6/combined/targo_dataset',
                         help="Path to processed dataset")
     parser.add_argument("--dataset_raw", type=Path,
-                        default='/storage/user/dira/nips_data_version6/combined/targo_dataset',
+                        default='/home/ran.ding/projects/TARGO/data/nips_data_version6/combined/targo_dataset',
                         help="Path to raw dataset")
     parser.add_argument("--logdir", type=Path,
-                        default="/usr/stud/dira/GraspInClutter/grasping/train_logs_simple",
+                        default="/home/ran.ding/projects/TARGO/train_logs_simple",
                         help="Base log directory")
     
     # Training parameters

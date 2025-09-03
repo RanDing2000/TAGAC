@@ -297,9 +297,9 @@ module load cuda/11.3.0
 
 python scripts/train_targo.py \
     --net targo \
-    --dataset /storage/user/dira/nips_data_version6/combined/targo_dataset \
-    --dataset_raw /storage/user/dira/nips_data_version6/combined/targo_dataset \
-    --logdir /usr/stud/dira/GraspInClutter/grasping/train_logs_targo \
+    --dataset /home/ran.ding/projects/TARGO/data/nips_data_version6/combined/targo_dataset \
+    --dataset_raw /home/ran.ding/projects/TARGO/data/nips_data_version6/combined/targo_dataset \
+    --logdir /home/ran.ding/projects/TARGO/train_logs_targo \
     --data_contain "pc and targ_grid" \
     --use_complete_targ False \
     --shape_completion True \
@@ -317,9 +317,9 @@ module load cuda/12.1.0
 
 python scripts/train_targo_ptv3.py \
     --net targo_ptv3 \
-    --dataset /storage/user/dira/nips_data_version6/combined/targo_dataset \
-    --dataset_raw /storage/user/dira/nips_data_version6/combined/targo_dataset \
-    --logdir /usr/stud/dira/GraspInClutter/grasping/train_logs_targo_ptv3 \
+    --dataset /home/ran.ding/projects/TARGO/data/nips_data_version6/combined/targo_dataset \
+    --dataset_raw /home/ran.ding/projects/TARGO/data/nips_data_version6/combined/targo_dataset \
+    --logdir /home/ran.ding/projects/TARGO/train_logs_targo_ptv3 \
     --data_contain "pc and targ_grid" \
     --use_complete_targ False \
     --shape_completion True \
@@ -338,15 +338,15 @@ module load cuda/11.3.0
 
 # First, preprocess complete target meshes
 python scripts/preprocess_complete_target_mesh.py \
-    --raw_root /storage/user/dira/nips_data_version6/combined/targo_dataset \
-    --output_root /storage/user/dira/nips_data_version6/combined/targo_dataset
+    --raw_root /home/ran.ding/projects/TARGO/data/nips_data_version6/combined/targo_dataset \
+    --output_root /home/ran.ding/projects/TARGO/data/nips_data_version6/combined/targo_dataset
 
 # Then train original TARGO Full
 python scripts/train_targo_full.py \
     --net targo \
-    --dataset /storage/user/dira/nips_data_version6/combined/targo_dataset \
-    --dataset_raw /storage/user/dira/nips_data_version6/combined/targo_dataset \
-    --logdir /usr/stud/dira/GraspInClutter/grasping/train_logs_targo_full \
+    --dataset /home/ran.ding/projects/TARGO/data/nips_data_version6/combined/targo_dataset \
+    --dataset_raw /home/ran.ding/projects/TARGO/data/nips_data_version6/combined/targo_dataset \
+    --logdir /home/ran.ding/projects/TARGO/train_logs_targo_full \
     --data_contain "pc and targ_grid" \
     --use_complete_targ True \
     --shape_completion False \
@@ -551,13 +551,13 @@ python scripts/inference_acronym.py --type vgn --model 'checkpoints/vgn_packed.p
 
 ## Data Processing Workflow
 
-### 1. Scene Data Generation (targo) [/usr/stud/dira/GraspInClutter/targo]
+### 1. Scene Data Generation (targo) [/home/ran.ding/projects/TARGO]
 
 #### Acronym Dataset
 
 - **Medium Occlusion Scenes**: `scripts/scene_generation/acronym_objects/generate_targo_dataset_acroym_medium_occlusion.py`
 
-  The data is saved on `/usr/stud/dira/GraspInClutter/targo/data_scenes/acronym/acronym-middle-occlusion-1000`
+  The data is saved on `data_scenes/acronym/acronym-middle-occlusion-1000`
 
   Also, since the mesh_pose_dict has been corrupted, we use:
 
@@ -565,25 +565,25 @@ python scripts/inference_acronym.py --type vgn --model 'checkpoints/vgn_packed.p
 
 - **Slight Occlusion Scenes**: `scripts/scene_generation/acronym_objects/generate_targo_dataset_acroym_slight_occlusion.py`
 
-  The data is saved on `/usr/stud/dira/GraspInClutter/targo/data_scenes/acronym/acronym-slight-occlusion-1000`
+  The data is saved on `data_scenes/acronym/acronym-slight-occlusion-1000`
 
 - **No Occlusion Scenes**: `scripts/scene_generation/acronym_objects/generate_targo_dataset_acroym_no_occlusion.py`
 
-  The data is saved on `/usr/stud/dira/GraspInClutter/targo/data_scenes/acronym/acronym-no-occlusion-1000`
+  The data is saved on `data_scenes/acronym/acronym-no-occlusion-1000`
 
 #### YCB Dataset
 
 - **Medium Occlusion Scenes**: `scripts/scene_generation/ycb_objects/generate_targo_dataset_ycb_medium_occlusion.py`
 
-  The data is saved on `/usr/stud/dira/GraspInClutter/targo/data_scenes/ycb/maniskill-ycb-v2-middle-occlusion-1000`
+  The data is saved on `data_scenes/ycb/maniskill-ycb-v2-middle-occlusion-1000`
 
 - **Slight Occlusion Scenes**: `scripts/scene_generation/ycb_objects/generate_targo_dataset_ycb_slight_occlusion.py`
 
-  The data is saved on `/usr/stud/dira/GraspInClutter/targo/data_scenes/ycb/maniskill-ycb-v2-slight-occlusion-1000`
+  The data is saved on `data_scenes/ycb/maniskill-ycb-v2-slight-occlusion-1000`
 
 - **No Occlusion Scenes**: `scripts/scene_generation/ycb_objects/generate_targo_dataset_ycb_no_occlusion.py`
 
-  The data is saved on `/usr/stud/dira/GraspInClutter/targo/data_scenes/ycb/maniskill-ycb-v2-no-occlusion-1000`
+  The data is saved on `data_scenes/ycb/maniskill-ycb-v2-no-occlusion-1000`
 
 ### 2. Scene Data Rendering (GaussianGrasp) [/usr/stud/dira/GraspInClutter/GaussianGrasp/datasets_gen]
 
@@ -599,7 +599,7 @@ python scripts/inference_acronym.py --type vgn --model 'checkpoints/vgn_packed.p
 
 ## Model Evaluation and Demonstration
 
-### 1. Benchmarking [/usr/stud/dira/GraspInClutter/targo]
+### 1. Benchmarking [/home/ran.ding/projects/TARGO]
 
 - **YCB Testing Script**: `scripts/inference_ycb.py`
 - **ACRONYM Testing Script**: `scripts/inference_acronym.py`

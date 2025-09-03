@@ -18,7 +18,7 @@ conda activate targo
 
 # 设置变量
 SESSION="eval_parallel_acronym2"
-WORKDIR="/usr/stud/dira/GraspInClutter/targo"
+WORKDIR="/home/ran.ding/projects/TARGO"
 
 # 创建 tmux 会话（后台）
 tmux new-session -d -s $SESSION

@@ -85,8 +85,8 @@ def test_dataset_error_handling():
     
     # 示例数据集路径（这些路径需要根据实际情况修改）
     dataset_paths = [
-        "/usr/stud/dira/GraspInClutter/targo/data_scenes/ycb/maniskill-ycb-v2-slight-occlusion-1000",
-        "/storage/user/dira/nips_data_version6/combined/targo_dataset",
+        "data_scenes/ycb/maniskill-ycb-v2-slight-occlusion-1000",
+        "/home/ran.ding/projects/TARGO/data/nips_data_version6/combined/targo_dataset",
     ]
     
     for dataset_path in dataset_paths:

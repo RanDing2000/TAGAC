@@ -18,7 +18,7 @@ from src.vgn.experiments import target_sample_offline_hunyuan
 # (We keep set_random_seed here if you plan to reuse it, but it's not strictly used now.)
 from src.vgn.utils.misc import set_random_seed
 
-scene_name_path = '/storage/user/dira/nips_data_version6/test_set_gaussian_0.002/scene_name.txt'
+scene_name_path = '/home/ran.ding/projects/TARGO/data/nips_data_version6/test_set_gaussian_0.002/scene_name.txt'
 def str2bool(v):
     """
     Convert string inputs like 'yes', 'true', etc. to boolean values.
@@ -166,8 +166,8 @@ if __name__ == "__main__":
     parser.add_argument("--description", type=str, default="",
                         help="Optional experiment description.")
     parser.add_argument("--test_root", type=str,
-                        default='/storage/user/dira/nips_data_version6/test_set_gaussian_0.002')
-                        # default='/storage/user/dira/nips_data_version6/combined/test_set_gaussian_0.002_train_combined/combined')
+                        default='/home/ran.ding/projects/TARGO/data/nips_data_version6/test_set_gaussian_0.002')
+                        # default='/home/ran.ding/projects/TARGO/data/nips_data_version6/combined/test_set_gaussian_0.002_train_combined/combined')
     parser.add_argument("--model", type=Path, default='checkpoints/targonet.pt')
     parser.add_argument("--scene", type=str, choices=["pile", "packed"], default="packed")
     parser.add_argument("--object-set", type=str, default="packed/test")

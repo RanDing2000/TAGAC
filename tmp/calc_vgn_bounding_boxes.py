@@ -6,8 +6,8 @@ import trimesh
 from pathlib import Path
 
 # 输入和输出路径
-base_path = "/usr/stud/dira/GraspInClutter/targo/data/urdfs/packed/train"
-output_dir = "/usr/stud/dira/GraspInClutter/targo/data/stastics/vgn"
+base_path = "/home/ran.ding/projects/TARGO/data//urdfs/packed/train"
+output_dir = "/home/ran.ding/projects/TARGO/data//stastics/vgn"
 output_file = os.path.join(output_dir, "vgn_bounding_boxes.json")
 
 # 确保输出目录存在

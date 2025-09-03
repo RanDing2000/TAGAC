@@ -3,7 +3,7 @@
 检查哪些场景文件缺少 complete_target_pc 和 complete_target_tsdf 数据
 """
 
-# python -m pdb scripts/check_missing_complete_target.py --dataset_root /storage/user/dira/nips_data_version6/combined/targo_dataset --max_scenes 100
+# python -m pdb scripts/check_missing_complete_target.py --dataset_root /home/ran.ding/projects/TARGO/data/nips_data_version6/combined/targo_dataset --max_scenes 100
 
 
 import argparse

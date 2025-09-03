@@ -1,6 +1,6 @@
 .. image:: https://travis-ci.org/storpipfugl/pykdtree.svg?branch=master
     :target: https://travis-ci.org/storpipfugl/pykdtree
-.. image:: https://ci.appveyor.com/api/projects/status/ubo92368ktt2d25g/branch/master
+.. image:: https://ci.appveyor.com/api//home/ran.ding/projects/status/ubo92368ktt2d25g/branch/master
     :target: https://ci.appveyor.com/project/storpipfugl/pykdtree
 
 ========

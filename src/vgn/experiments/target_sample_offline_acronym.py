@@ -147,8 +147,8 @@ def run(
         #     continue
         path_to_npz = os.path.join(test_scenes, curr_mesh_pose_list)
         scene_name = curr_mesh_pose_list[:-4]
-        if scene_name != 'e58c07c265c34559ac189b1afdf94358_c_4':
-            continue
+        # if scene_name != 'e58c07c265c34559ac189b1afdf94358_c_4':
+        #     continue
         
         # if scene_name != 'cb0166e7ccf44d47bfcf4037b8511175_c_2':
         #     continue
@@ -210,7 +210,7 @@ def run(
             allow_pickle=True
         )["pc"]
 
-        acronym_scene_category_dict = json.load(open('/usr/stud/dira/GraspInClutter/targo/targo_eval_results/stastics_analysis/acronym_prompt_dict.json'))
+        acronym_scene_category_dict = json.load(open('/home/ran.ding/projects/TARGO/targo_eval_results/stastics_analysis/acronym_prompt_dict.json'))
 
         # Place objects
         for obj_id, mesh_info in enumerate(mp_data.item().values()):
@@ -231,7 +231,7 @@ def run(
                     file_id = file_basename.replace("_textured.obj", "").replace(".obj", "")
                     
                     # Base directory for URDF files
-                    urdf_base_dir = "/usr/stud/dira/GraspInClutter/targo/data/acronym/urdfs_acronym"
+                    urdf_base_dir = "/home/ran.ding/projects/TARGO/data//acronym/urdfs_acronym"
                     
                     # Method 1: Directly build path (if no category prefix)
                     urdf_path = f"{urdf_base_dir}/{file_id}.urdf"
@@ -251,6 +251,14 @@ def run(
 
             # Get bounding heights
             if obj_id != 0:
+                # file_path = mesh_info[0]
+                mesh_info = list(mesh_info)   # tuple → list
+                mesh_info[0] = mesh_info[0].replace(
+                    '/usr/stud/dira/GraspInClutter/targo/', 
+                    '/home/ran.ding/projects/TARGO/'
+                )
+                mesh_info = tuple(mesh_info)  # 如果后面还需要 tuple，可以转回去
+
                 tri_mesh = trimesh.load_mesh(mesh_info[0])
                 tri_mesh.apply_scale(mesh_info[1])
                 tri_mesh.apply_transform(mesh_info[2])
@@ -738,7 +746,7 @@ def run(
         # if scene_pc is not None:
         #     generate_and_transform_grasp_meshes(
         #         grasp, scene_pc,
-        #         '/usr/stud/dira/GraspInClutter/grasping/demo_targo'
+        #         '/home/ran.ding/projects/TARGO/demo_targo'
         #     )
 
         grasp.width = sim.gripper.max_opening_width
@@ -796,7 +804,7 @@ def run(
                             file_id = file_basename.replace("_textured.obj", "").replace(".obj", "")
                             
                             # Base directory for URDF files
-                            urdf_base_dir = "/usr/stud/dira/GraspInClutter/targo/data/acronym/urdfs_acronym"
+                            urdf_base_dir = "/home/ran.ding/projects/TARGO/data/acronym/urdfs_acronym"
                             
                             # Method 1: Directly build path (if no category prefix)
                             urdf_path = f"{urdf_base_dir}/{file_id}.urdf"

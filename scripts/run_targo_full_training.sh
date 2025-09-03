@@ -6,9 +6,9 @@
 set -e  # Exit on any error
 
 # Configuration
-RAW_DATASET="/storage/user/dira/nips_data_version6/combined/targo_dataset"
-PROCESSED_DATASET="/storage/user/dira/nips_data_version6/combined/targo_dataset"
-LOG_DIR="/usr/stud/dira/GraspInClutter/grasping/train_logs_targo_full"
+RAW_DATASET="/home/ran.ding/projects/TARGO/data/nips_data_version6/combined/targo_dataset"
+PROCESSED_DATASET="/home/ran.ding/projects/TARGO/data/nips_data_version6/combined/targo_dataset"
+LOG_DIR="/home/ran.ding/projects/TARGO/train_logs_targo_full"
 
 echo "============================================================"
 echo "TARGO Full Training - Complete Target Point Clouds"

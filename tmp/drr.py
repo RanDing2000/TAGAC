@@ -5,7 +5,7 @@ import json
 
 def analyze_results(file_path):
     # 读取YCB类别映射
-    ycb_path = "/usr/stud/dira/GraspInClutter/targo/targo_eval_results/eval_results_train_full-medium-occlusion-1000/targo/0/ycb.json"
+    ycb_path = "/home/ran.ding/projects/TARGO/targo_eval_results/eval_results_train_full-medium-occlusion-1000/targo/0/ycb.json"
     with open(ycb_path, 'r') as f:
         ycb_mapping = json.load(f)
     
@@ -102,15 +102,15 @@ def analyze_results(file_path):
     output.append(f"Average Success Rate: {df['success_rate'].mean():.6f}")
     
     # 确保输出目录存在
-    os.makedirs("/usr/stud/dira/GraspInClutter/targo/targo_eval_results/eval_results_train_full-medium-occlusion-1000/targo/0", exist_ok=True)
+    os.makedirs("/home/ran.ding/projects/TARGO/targo_eval_results/eval_results_train_full-medium-occlusion-1000/targo/0", exist_ok=True)
     
     # 写入文件
-    with open("/usr/stud/dira/GraspInClutter/targo/targo_eval_results/eval_results_train_full-medium-occlusion-1000/targo/0/summary_by_category.txt", 'w') as f:
+    with open("/home/ran.ding/projects/TARGO/targo_eval_results/eval_results_train_full-medium-occlusion-1000/targo/0/summary_by_category.txt", 'w') as f:
         f.write('\n'.join(output))
     
     # 同时打印到控制台
     print('\n'.join(output))
 
 # 使用方法
-file_path = "/usr/stud/dira/GraspInClutter/targo/targo_eval_results/eval_results_train_full-medium-occlusion-1000/targo/2025-03-25_00-08-19/meta_evaluations.txt"
+file_path = "/home/ran.ding/projects/TARGO/targo_eval_results/eval_results_train_full-medium-occlusion-1000/targo/2025-03-25_00-08-19/meta_evaluations.txt"
 analyze_results(file_path)

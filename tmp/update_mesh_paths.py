@@ -3,8 +3,8 @@ import xml.etree.ElementTree as ET
 import re
 
 # 定义目标目录和新路径前缀
-target_dir = "/usr/stud/dira/GraspInClutter/targo/data/acronym/collisions_tabletop"
-new_path_prefix = "/storage/user/dira/acronym/ShapeNetSem-backup/models-OBJ/models/"
+target_dir = "/home/ran.ding/projects/TARGO/data//acronym/collisions_tabletop"
+new_path_prefix = "/home/ran.ding/projects/TARGO/data/acronym/ShapeNetSem-backup/models-OBJ/models/"
 
 # 统计变量
 total_files = 0

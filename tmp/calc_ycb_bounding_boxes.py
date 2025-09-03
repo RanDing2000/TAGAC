@@ -51,14 +51,14 @@ def process_ycb_objects(base_path):
 
 def main():
     # 输出路径
-    output_dir = "/usr/stud/dira/GraspInClutter/targo/data/stastics/maniskill_ycb"
+    output_dir = "/home/ran.ding/projects/TARGO/data//stastics/maniskill_ycb"
     output_file = os.path.join(output_dir, "ycb_bounding_boxes.json")
     
     # 确保输出目录存在
     os.makedirs(output_dir, exist_ok=True)
     
     # YCB模型的基本路径
-    base_path = "/usr/stud/dira/GraspInClutter/targo/data/maniskill_ycb/mani_skill2_ycb/models"
+    base_path = "/home/ran.ding/projects/TARGO/data//maniskill_ycb/mani_skill2_ycb/models"
     
     # 处理所有模型
     results = process_ycb_objects(base_path)

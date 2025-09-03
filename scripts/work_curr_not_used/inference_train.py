@@ -166,8 +166,8 @@ if __name__ == "__main__":
     parser.add_argument("--description", type=str, default="",
                         help="Optional experiment description.")
     parser.add_argument("--test_root", type=str,
-                        # default='/storage/user/dira/nips_data_version6/test_set_gaussian_0.002')
-                        default='/storage/user/dira/nips_data_version6/combined/test_set_gaussian_0.002_train_cvpr_full/combined')
+                        # default='/home/ran.ding/projects/TARGO/data/nips_data_version6/test_set_gaussian_0.002')
+                        default='/home/ran.ding/projects/TARGO/data/nips_data_version6/combined/test_set_gaussian_0.002_train_cvpr_full/combined')
     parser.add_argument("--model", type=Path, default='checkpoints/targonet.pt')
     parser.add_argument("--scene", type=str, choices=["pile", "packed"], default="packed")
     # parser.add_argument("--object-set", type=str, default="packed/test")

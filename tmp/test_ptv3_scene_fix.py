@@ -10,8 +10,8 @@ import sys
 import os
 
 # 设置环境
-sys.path.append('/usr/stud/dira/GraspInClutter/targo')
-os.chdir('/usr/stud/dira/GraspInClutter/targo')
+sys.path.append('/home/ran.ding/projects/TARGO')
+os.chdir('/home/ran.ding/projects/TARGO')
 
 def test_ptv3_scene_data_format():
     """测试ptv3_scene的数据格式处理"""

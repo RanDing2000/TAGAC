@@ -30,8 +30,7 @@ mcubes_module = Extension(
     'src.vgn.ConvONets.utils.libmcubes.mcubes',
     sources=[
         'src/vgn/ConvONets/utils/libmcubes/mcubes.pyx',
-        'src/vgn/ConvONets/utils/libmcubes/pywrapper.cpp',
-        'src/vgn/ConvONets/utils/libmcubes/marchingcubes.cpp'
+        'src/vgn/ConvONets/utils/libmcubes/mcubes.cpp'
     ],
     language='c++',
     extra_compile_args=['-std=c++11'],
@@ -77,11 +76,11 @@ voxelize_module = Extension(
 # Gather all extension modules
 ext_modules = [
     #pykdtree,
-    mcubes_module,
+    #mcubes_module,  # Commented out due to compilation issues
     triangle_hash_module,
-    mise_module,
-    simplify_mesh_module,
-    voxelize_module,
+    #mise_module,  # Commented out temporarily
+    #simplify_mesh_module,  # Commented out temporarily
+    #voxelize_module,  # Commented out temporarily
 ]
 
 setup(

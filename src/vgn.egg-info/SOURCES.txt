@@ -1,4 +1,5 @@
 README.md
+pyproject.toml
 setup.py
 src/vgn/__init__.py
 src/vgn/baselines.py
@@ -7,6 +8,7 @@ src/vgn/dataset_voxel.py
 src/vgn/dataset_voxel_occ.py
 src/vgn/detection.py
 src/vgn/detection_implicit.py
+src/vgn/detection_ptv3_implicit.py
 src/vgn/grasp.py
 src/vgn/grasp_conversion.py
 src/vgn/io.py
@@ -26,3 +28,18 @@ src/vgn/utils/nvisii_render.py
 src/vgn/utils/saver.py
 src/vgn/utils/transform.py
 src/vgn/utils/visual.py
+tests/test_dataset_error_handling.py
+tests/test_simple.py
+tests/test_training_validation.py
+tests/test_validation_direct.py
+tests/test_validation_monotonic_steps.py
+tests/test_validation_simple.py
+tests/test_validation_upload_force.py
+tests/test_visualization.py
+tests/test_wandb_config.py
+tests/test_wandb_connection.py
+tests/test_wandb_display.py
+tests/test_wandb_step_fix.py
+tests/test_wandb_training.py
+tests/test_wandb_validation_upload.py
+tests/test_ycb_only_validation.py

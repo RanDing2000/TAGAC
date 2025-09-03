@@ -112,7 +112,7 @@ def main():
     主测试函数。
     """
     # Test parameters
-    output_dir = Path("/usr/stud/dira/GraspInClutter/targo/data_scenes/targo_dataset/scenes_enhanced")
+    output_dir = Path("data_scenes/targo_dataset/scenes_enhanced")
     
     if not output_dir.exists():
         print(f"ERROR: Output directory not found: {output_dir}")

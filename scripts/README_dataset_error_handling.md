@@ -45,7 +45,7 @@ def safe_specify_num_points(points, target_size, scene_id, point_type="unknown")
 ### 3. 错误日志系统
 
 自动记录所有数据加载错误到文件：
-- **日志文件位置**: `/usr/stud/dira/GraspInClutter/targo/dataset_error_scenes.txt`
+- **日志文件位置**: `/home/ran.ding/projects/TARGO/data/set_error_scenes.txt`
 - **日志格式**: `scene_id,error_type,"error_message"`
 
 ### 4. 错误类型分类
@@ -97,7 +97,7 @@ python scripts/test_dataset_error_handling.py
 import pandas as pd
 
 # 读取错误日志
-df = pd.read_csv('/usr/stud/dira/GraspInClutter/targo/dataset_error_scenes.txt', 
+df = pd.read_csv('/home/ran.ding/projects/TARGO/data/set_error_scenes.txt', 
                  names=['scene_id', 'error_type', 'error_message'])
 
 # 统计错误类型
@@ -124,10 +124,10 @@ xyz789abc123def456_c_2,ptv3_target,"Failed to process PTV3 target point cloud"
 
 ```bash
 # 查看错误日志
-tail -n 50 /usr/stud/dira/GraspInClutter/targo/dataset_error_scenes.txt
+tail -n 50 /home/ran.ding/projects/TARGO/data/set_error_scenes.txt
 
 # 统计错误数量
-wc -l /usr/stud/dira/GraspInClutter/targo/dataset_error_scenes.txt
+wc -l /home/ran.ding/projects/TARGO/data/set_error_scenes.txt
 ```
 
 ### 数据质量改进
@@ -143,7 +143,7 @@ wc -l /usr/stud/dira/GraspInClutter/targo/dataset_error_scenes.txt
 如果需要重新开始记录：
 
 ```bash
-rm /usr/stud/dira/GraspInClutter/targo/dataset_error_scenes.txt
+rm /home/ran.ding/projects/TARGO/data/set_error_scenes.txt
 ```
 
 ## 性能影响

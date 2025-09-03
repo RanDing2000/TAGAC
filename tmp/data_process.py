@@ -2,8 +2,8 @@ import os
 import shutil
 
 # 定义源和目标目录
-source_dir = '/usr/stud/dira/GraspInClutter/targo/data/maniskill_ycb/mani_skill2_ycb/models'
-destination_dir = '/usr/stud/dira/GraspInClutter/targo/data/maniskill_ycb/mani_skill2_ycb/collisions'
+source_dir = '/home/ran.ding/projects/TARGO/data//maniskill_ycb/mani_skill2_ycb/models'
+destination_dir = '/home/ran.ding/projects/TARGO/data//maniskill_ycb/mani_skill2_ycb/collisions'
 
 # 遍历源目录中的所有子文件夹
 for folder_name in os.listdir(source_dir):

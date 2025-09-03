@@ -6,7 +6,7 @@ import pandas as pd
 from collections import defaultdict
 from tqdm import tqdm
 
-def check_missing_data(dataset_root="/usr/stud/dira/GraspInClutter/targo/data_scenes/targo_dataset"):
+def check_missing_data(dataset_root="data_scenes/targo_dataset"):
     """
     检查targo数据集中缺失的数据:
     1. single scene (_s_) 文件中缺失的 complete_target_tsdf

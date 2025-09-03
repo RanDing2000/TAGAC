@@ -46,15 +46,15 @@ except ImportError as e:
 
 def parse_args():
     parser = argparse.ArgumentParser(description='GroundingDINO + SAM Demo')
-    parser.add_argument('--image_path', type=str, default="/usr/stud/dira/GraspInClutter/targo/scripts/demo/image.png", 
+    parser.add_argument('--image_path', type=str, default="/home/ran.ding/projects/TARGO/scripts/demo/image.png", 
                        help='Path to input image')
     parser.add_argument('--text_prompt', type=str, default="black figure", 
                        help='Text prompt for object detection')
     parser.add_argument('--output_path', type=str, default="output_masked.png", 
                        help='Path to save output image')
-    parser.add_argument('--dino_checkpoint', type=str, default="/usr/stud/dira/GraspInClutter/targo/src/GroundingDINO/groundingdino_swint_ogc.pth", 
+    parser.add_argument('--dino_checkpoint', type=str, default="/home/ran.ding/projects/TARGO/src/GroundingDINO/groundingdino_swint_ogc.pth", 
                        help='Path to GroundingDINO checkpoint')
-    parser.add_argument('--sam_checkpoint', type=str, default="/usr/stud/dira/GraspInClutter/targo/src/GroundingDINO/sam_vit_h_4b8939.pth", 
+    parser.add_argument('--sam_checkpoint', type=str, default="/home/ran.ding/projects/TARGO/src/GroundingDINO/sam_vit_h_4b8939.pth", 
                        help='Path to SAM checkpoint')
     parser.add_argument('--box_threshold', type=float, default=0.3, 
                        help='Box confidence threshold')

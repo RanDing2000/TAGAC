@@ -1,8 +1,8 @@
 import os
 
 # 设置文件夹路径
-input_dir = "/usr/stud/dira/GraspInClutter/targo/data/acronym/collisions"
-output_file = "/usr/stud/dira/GraspInClutter/targo/example_targets/acronym_target_list.txt"
+input_dir = "/home/ran.ding/projects/TARGO/data//acronym/collisions"
+output_file = "/home/ran.ding/projects/TARGO/example_targets/acronym_target_list.txt"
 
 # 获取所有以 .urdf 结尾的文件名，去掉后缀
 urdf_names = [

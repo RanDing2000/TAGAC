@@ -211,7 +211,7 @@ if __name__ == "__main__":
                         help="Whether to visualize and save the affordance map.")
     parser.add_argument("--video-recording", type=str2bool, default=False,
                         help="Whether to record videos of grasping attempts.")
-    parser.add_argument("--target-file", type=str, default='/usr/stud/dira/GraspInClutter/targo/example_targets/target_list.txt',
+    parser.add_argument("--target-file", type=str, default='/home/ran.ding/projects/TARGO/example_targets/target_list.txt',
                         help="Path to a .txt file containing target names to record. If provided, only videos of these targets will be recorded.")
     
     args = parser.parse_args()
@@ -219,7 +219,7 @@ if __name__ == "__main__":
     # Set paths based on occlusion level
     if args.occlusion_level == "medium":
         if args.hunyun2_path is None:
-            args.hunyun2_path = '/usr/stud/dira/GraspInClutter/Gen3DSR/hunyuan_results/ycb/medium'
+            args.hunyun2_path = '/home/ran.ding/projects/Gen3DSR/hunyuan_results/ycb/medium'
         if args.result_root is None:
             args.result_root = 'targo_eval_results/ycb/eval_results_full-medium-occlusion'
         if args.logdir is None:
@@ -230,7 +230,7 @@ if __name__ == "__main__":
             args.occ_level_dict = 'data_scenes/ycb/maniskill-ycb-v2-middle-occlusion-1000/test_set/occlusion_level_dict.json'
     elif args.occlusion_level == "slight":
         if args.hunyun2_path is None:
-            args.hunyun2_path = '/usr/stud/dira/GraspInClutter/Gen3DSR/hunyuan_results/ycb/slight'
+            args.hunyun2_path = '/home/ran.ding/projects/Gen3DSR/hunyuan_results/ycb/slight'
         if args.result_root is None:
             args.result_root = 'targo_eval_results/ycb/eval_results_full-slight-occlusion'
         if args.logdir is None:
@@ -241,7 +241,7 @@ if __name__ == "__main__":
             args.occ_level_dict = 'data_scenes/ycb/maniskill-ycb-v2-slight-occlusion-1000/test_set/occlusion_level_dict.json'
     elif args.occlusion_level == "no":
         if args.hunyun2_path is None:
-            args.hunyun2_path = '/usr/stud/dira/GraspInClutter/Gen3DSR/hunyuan_results/ycb/no'
+            args.hunyun2_path = '/home/ran.ding/projects/Gen3DSR/hunyuan_results/ycb/no'
         if args.result_root is None:
             args.result_root = 'targo_eval_results/ycb/eval_results_full-no-occlusion'
         if args.logdir is None:

@@ -19,6 +19,8 @@ import shutil
 import matplotlib.pyplot as plt
 import clip
 from datetime import datetime
+from sys import path
+path.append('/home/ran.ding/projects/TARGO')
 
 from src.vgn.io import *
 from src.vgn.perception import *
@@ -78,8 +80,8 @@ def transform_pc(pc):
     return points_curr_transformed['input']
 
 # Global error log file for recording problematic scene_ids
-ERROR_LOG_FILE_TARGO_FULL = Path("/usr/stud/dira/GraspInClutter/targo/data_check_results/full_train/dataset_error_scenes_targo_full.txt")
-ERROR_LOG_FILE_PTV3_SCENE = Path("/usr/stud/dira/GraspInClutter/targo/data_check_results/full_train/dataset_error_scenes_ptv3_scene.txt")
+ERROR_LOG_FILE_TARGO_FULL = Path("/home/ran.ding/projects/TARGO/data/_check_results/full_train/dataset_error_scenes_targo_full.txt")
+ERROR_LOG_FILE_PTV3_SCENE = Path("/home/ran.ding/projects/TARGO/data/_check_results/full_train/dataset_error_scenes_ptv3_scene.txt")
 
 def safe_specify_num_points(points, target_size, scene_id, point_type="unknown"):
     """
@@ -234,7 +236,7 @@ class DatasetVoxel_Target(torch.utils.data.Dataset):
                     if '_c_' in scene_id:
                         targ_pc = read_targ_depth_pc(self.raw_root, scene_id).astype(np.float32)
                         scene_no_targ_pc = read_scene_no_targ_pc(self.raw_root, scene_id).astype(np.float32)
-                        # scene_no_targ_pc = np.concatenate((scene_no_targ_pc, np.load('/usr/stud/dira/GraspInClutter/grasping/setup/plane_sampled.npy')), axis=0)
+                        # scene_no_targ_pc = np.concatenate((scene_no_targ_pc, np.load('/home/ran.ding/projects/TARGO/setup/plane_sampled.npy')), axis=0)
                         targ_pc = points_within_boundary(targ_pc)
                         
                         # Safe point cloud processing
@@ -243,7 +245,7 @@ class DatasetVoxel_Target(torch.utils.data.Dataset):
                             raise ValueError(f"Failed to process target point cloud for scene {scene_id}")
                         
                         scene_no_targ_pc = points_within_boundary(scene_no_targ_pc)
-                        scene_no_targ_pc = np.concatenate((scene_no_targ_pc, np.load('/usr/stud/dira/GraspInClutter/grasping/setup/plane_sampled.npy')), axis=0)
+                        scene_no_targ_pc = np.concatenate((scene_no_targ_pc, np.load('/home/ran.ding/projects/TARGO/setup/plane_sampled.npy')), axis=0)
                         scene_no_targ_pc = safe_specify_num_points(scene_no_targ_pc, 2048, scene_id, "scene_no_target")
                         if scene_no_targ_pc is None:
                             raise ValueError(f"Failed to process scene_no_target point cloud for scene {scene_id}")
@@ -271,7 +273,7 @@ class DatasetVoxel_Target(torch.utils.data.Dataset):
                 if targ_pc is None:
                     raise ValueError(f"Failed to process target point cloud for scene {scene_id}")
                 
-                scene_pc = np.load('/usr/stud/dira/GraspInClutter/grasping/setup/plane_sampled.npy')
+                scene_pc = np.load('/home/ran.ding/projects/TARGO/setup/plane_sampled.npy')
                 num_scene = scene_pc.shape[0] + 2048
                 if '_c_' in scene_id:
                     scene_no_targ_pc = read_scene_no_targ_pc(self.raw_root, scene_id).astype(np.float32)
@@ -301,7 +303,7 @@ class DatasetVoxel_Target(torch.utils.data.Dataset):
             elif self.use_complete_targ:
                 # Read complete target data directly from current scene file
                 scene_single_path = self.raw_root / "scenes" / f"{single_scene_id}.npz"
-                # miss_log = Path("/usr/stud/dira/GraspInClutter/targo/miss_complete_target_tsdf.txt")
+                # miss_log = Path("/home/ran.ding/projects/TARGO/miss_complete_target_tsdf.txt")
 
                 # try:
                 with np.load(scene_single_path, allow_pickle=True) as data_single:
@@ -365,7 +367,7 @@ class DatasetVoxel_Target(torch.utils.data.Dataset):
 
         if self.data_contain == "pc and targ_grid":
             if not self.shape_completion:
-                plane = np.load('/usr/stud/dira/GraspInClutter/grasping/setup/plane_sampled.npy')
+                plane = np.load('/home/ran.ding/projects/TARGO/setup/plane_sampled.npy')
                 if not ('_s_' in scene_id and self.shape_completion):
                     scene_pc = np.concatenate((scene_pc, plane), axis=0)
                     targ_pc = targ_pc /0.3- 0.5
@@ -595,7 +597,7 @@ class DatasetVoxel_PTV3_Clip(torch.utils.data.Dataset):
                 
                 voxel_grid = occluder_grid + targ_grid
 
-                plane = np.load('/usr/stud/dira/GraspInClutter/grasping/setup/plane_sampled.npy')
+                plane = np.load('/home/ran.ding/projects/TARGO/setup/plane_sampled.npy')
                 if '_c_' in scene_id:
                     scene_no_targ_pc = read_scene_no_targ_pc(self.raw_root, scene_id).astype(np.float32)
                     # scene_no_targ_pc = np.concatenate((scene_no_targ_pc, plane), axis=0)
@@ -861,7 +863,7 @@ class DatasetVoxel_PTV3_Scene(torch.utils.data.Dataset):
         
         voxel_grid = occluder_grid + targ_grid
 
-        plane = np.load('/usr/stud/dira/GraspInClutter/grasping/setup/plane_sampled.npy')
+        plane = np.load('/home/ran.ding/projects/TARGO/setup/plane_sampled.npy')
         if '_c_' in scene_id:
             scene_no_targ_pc = read_scene_no_targ_pc(self.raw_root, scene_id).astype(np.float32)
             # scene_no_targ_pc = np.concatenate((scene_no_targ_pc, plane), axis=0)

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 SESSION="eval_parallel_ycb"
-WORKDIR="/usr/stud/dira/GraspInClutter/targo"
+WORKDIR="/home/ran.ding/projects/TARGO"
 ENV_ACTIVATE="conda activate targo"
 CUDA_MODULE="module load cuda/11.3.0"
 

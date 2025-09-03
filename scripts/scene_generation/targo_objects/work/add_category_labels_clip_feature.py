@@ -149,7 +149,7 @@ def build_pybullet_scene(sim, mesh_pose_dict):
             urdf_path = mesh_path.replace(".obj", ".urdf")
         else:
             file_id = file_basename.replace("_textured.obj", "").replace(".obj", "")
-            urdf_base_dir = "/usr/stud/dira/GraspInClutter/targo/data/urdfs/packed/train"
+            urdf_base_dir = "/home/ran.ding/projects/TARGO/data//urdfs/packed/train"
             urdf_path = f"{urdf_base_dir}/{file_id}.urdf"
             
             # If not found, try with category prefix
@@ -413,13 +413,13 @@ def extract_clip_features(text_prompt, model, device):
 def main():
     parser = argparse.ArgumentParser(description="Add category labels and CLIP features to scene npz files")
     parser.add_argument("--scenes_dir", type=str, 
-                       default="/usr/stud/dira/GraspInClutter/targo/data_scenes/targo_dataset/scenes",
+                       default="data_scenes/targo_dataset/scenes",
                        help="Directory containing scene npz files")
     parser.add_argument("--mesh_pose_dir", type=str,
-                       default="/usr/stud/dira/GraspInClutter/targo/data_scenes/targo_dataset/mesh_pose_dict",
+                       default="data_scenes/targo_dataset/mesh_pose_dict",
                        help="Directory containing mesh_pose_dict files")
     parser.add_argument("--clip_feat_dir", type=str,
-                       default="/usr/stud/dira/GraspInClutter/targo/data_scenes/targo_dataset/scene_ptv3_clip_feat",
+                       default="data_scenes/targo_dataset/scene_ptv3_clip_feat",
                        help="Directory to save CLIP feature files")
     parser.add_argument("--max_files", type=int, default=None,
                        help="Maximum number of files to process (for testing)")
@@ -454,7 +454,7 @@ def main():
     clip_features_dict = get_clip_features_for_categories(categories, model, device)
     
     # Load existing category scene dictionary
-    category_scene_dict_path = "/usr/stud/dira/GraspInClutter/targo/data_scenes/targo_dataset/category_scene_dict.json"
+    category_scene_dict_path = "data_scenes/targo_dataset/category_scene_dict.json"
     print(f"Loading existing category scene dictionary from {category_scene_dict_path}")
     with open(category_scene_dict_path, 'r') as f:
         category_scene_dict = json.load(f)

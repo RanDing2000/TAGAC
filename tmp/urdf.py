@@ -3,9 +3,9 @@ import csv
 import re
 
 # 定义输入和输出路径
-csv_file = "/usr/stud/dira/GraspInClutter/targo/data/acronym/grasps_acronym_metadata.csv"
-output_dir = "/usr/stud/dira/GraspInClutter/targo/data/acronym/urdfs_acronym"
-template_file = "/usr/stud/dira/GraspInClutter/targo/data/acronym/collisions_tabletop/AAABattery_a924eb3037129eaff8095890d92b7d6c.urdf"
+csv_file = "/home/ran.ding/projects/TARGO/data//acronym/grasps_acronym_metadata.csv"
+output_dir = "/home/ran.ding/projects/TARGO/data//acronym/urdfs_acronym"
+template_file = "/home/ran.ding/projects/TARGO/data//acronym/collisions_tabletop/AAABattery_a924eb3037129eaff8095890d92b7d6c.urdf"
 
 # 确保输出目录存在
 os.makedirs(output_dir, exist_ok=True)
@@ -68,7 +68,7 @@ with open(csv_file, 'r') as csvfile:
             urdf_content = re.sub(r'<mass value="[^"]+" />', f'<mass value="{mass}" />', urdf_content)
             
             # 3. 修改mesh路径
-            mesh_path = f'/storage/user/dira/acronym/ShapeNetSem-backup/models-OBJ/models/{object_id}.obj'
+            mesh_path = f'/home/ran.ding/projects/TARGO/data/acronym/ShapeNetSem-backup/models-OBJ/models/{object_id}.obj'
             urdf_content = re.sub(r'filename="[^"]+"', f'filename="{mesh_path}"', urdf_content)
             
             # 保存URDF文件

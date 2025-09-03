@@ -2487,3 +2487,482 @@ def load_splits(root_folder):
 #         cluttered_scene = trimesh.scene.scene.append_scenes([env_scene,create_grippers_scene(self.cluttered_scene_filtered_grasps) ])
 #         cluttered_scene.show()
 #         print("1")
+
+def compute_multi_object_completion_metrics(gt_meshes, pred_meshes, num_samples=10000):
+    """
+    Compute evaluation metrics for multi-object reconstruction using the existing compute_chamfer_and_iou function
+    
+    Args:
+        gt_meshes: List of Ground Truth meshes (reference)
+        pred_meshes: List of predicted meshes (already aligned if using GAPS)
+        num_samples: Number of sample points for metric computation
+        
+    Returns:
+        Dictionary containing various metrics and aligned scenes
+    """
+    print(f"GT scene contains {len(gt_meshes)} objects")
+    print(f"Predicted scene contains {len(pred_meshes)} objects")
+    
+    if len(gt_meshes) == 0 or len(pred_meshes) == 0:
+        print("Warning: No valid meshes found")
+        return {
+            'chamfer_distance': float('inf'),
+            'iou': 0.0,
+            'chamfer_distance_std': 0.0,
+            'iou_std': 0.0,
+            'per_object_cds': [],
+            'per_object_ious': [],
+            'scene_iou': 0.0
+        }
+    
+    # Use the provided meshes directly (alignment already done in eval.py)
+    aligned_pred_meshes = pred_meshes
+    
+    # Step 4: Compute per-object metrics
+    print("Step 4: Computing per-object metrics...")
+    per_object_cds = []
+    per_object_ious = []
+    
+    # For each predicted object, find best matching GT object and compute metrics
+    for i, pred_mesh in enumerate(aligned_pred_meshes):
+        best_cd = float('inf')
+        best_iou = 0.0
+        best_gt_idx = -1
+        
+        for j, gt_mesh in enumerate(gt_meshes):
+            try:
+                # Use the existing compute_chamfer_and_iou function
+                cd, iou = compute_chamfer_and_iou(gt_mesh, pred_mesh)
+                
+                # Optional: Save meshes for debugging
+                # gt_mesh.export(f"gt_{j}.ply", include_attributes=False)
+                # pred_mesh.export(f"pred_{i}.ply", include_attributes=False)
+                
+                if cd < best_cd:
+                    best_cd = cd
+                    best_iou = iou
+                    best_gt_idx = j
+                    
+            except Exception as e:
+                print(f"Error computing metrics for pred object {i} and GT object {j}: {e}")
+                continue
+        
+        if best_gt_idx >= 0:
+            per_object_cds.append(best_cd)
+            per_object_ious.append(best_iou)
+            print(f"Pred object {i} matched with GT object {best_gt_idx}: CD={best_cd:.6f}, IoU={best_iou:.6f}")
+        else:
+            per_object_cds.append(float('inf'))
+            per_object_ious.append(0.0)
+            print(f"No match found for pred object {i}")
+    
+    # Compute scene-level metrics
+    if per_object_cds:
+        scene_cd = np.mean(per_object_cds)
+        scene_iou = np.mean(per_object_ious)
+        scene_cd_std = np.std(per_object_cds)
+        scene_iou_std = np.std(per_object_ious)
+    else:
+        scene_cd = float('inf')
+        scene_iou = 0.0
+        scene_cd_std = 0.0
+        scene_iou_std = 0.0
+    
+    # Create metrics dictionary
+    metrics = {
+        'chamfer_distance': float(scene_cd),
+        'iou': float(scene_iou),
+        'chamfer_distance_std': float(scene_cd_std),
+        'iou_std': float(scene_iou_std),
+        'per_object_cds': per_object_cds,
+        'per_object_ious': per_object_ious,
+        'scene_iou': float(scene_iou)
+    }
+    
+    # Create aligned scenes for compatibility
+    aligned_gt_scene = trimesh.Scene(gt_meshes)
+    aligned_pred_scene = trimesh.Scene(aligned_pred_meshes)
+    
+    # Store aligned scenes for later use
+    metrics['aligned_gt_scene'] = aligned_gt_scene
+    metrics['aligned_pred_scene'] = aligned_pred_scene
+    
+    # Create merged meshes for compatibility
+    if len(gt_meshes) > 1:
+        metrics['aligned_gt_merged'] = trimesh.util.concatenate(gt_meshes)
+    else:
+        metrics['aligned_gt_merged'] = gt_meshes[0] if gt_meshes else None
+    
+    if len(aligned_pred_meshes) > 1:
+        metrics['aligned_pred_merged'] = trimesh.util.concatenate(aligned_pred_meshes)
+    else:
+        metrics['aligned_pred_merged'] = aligned_pred_meshes[0] if aligned_pred_meshes else None
+    
+    print(f"Final scene metrics: CD={metrics['chamfer_distance']:.6f}±{metrics['chamfer_distance_std']:.6f}, "
+          f"IoU={metrics['iou']:.6f}±{metrics['iou_std']:.6f}")
+    
+    return metrics
+
+def compute_penetration_level(mesh_list, merged_mesh, size=0.3, resolution=40):
+    """
+    Compute penetration level between merged mesh and individual meshes.
+    
+    Penetration level = 1 - (merged_mesh_internal_points / sum_of_individual_mesh_internal_points)
+    
+    Args:
+        mesh_list: List of trimesh.Trimesh objects
+        merged_mesh: Single merged trimesh.Trimesh object
+        size: Size of the workspace (float, default 0.3)
+        resolution: TSDF grid resolution (int, default 40)
+        
+    Returns:
+        float: Penetration level (0 = no penetration, 1 = complete overlap)
+    """
+    if not mesh_list or merged_mesh is None:
+        print("Warning: Invalid input meshes")
+        return 0.0
+    
+    print(f"Computing penetration level for {len(mesh_list)} individual meshes vs 1 merged mesh")
+    
+    try:
+        # Convert merged mesh to TSDF
+        merged_tsdf = mesh_to_tsdf(merged_mesh, size, resolution)
+        
+        # Count internal points in merged mesh (TSDF > 0.5 indicates inside)
+        merged_internal_points = np.sum(merged_tsdf > 0.5)
+        print(f"Merged mesh internal points: {merged_internal_points}")
+        
+        # Convert each individual mesh to TSDF and count internal points
+        individual_internal_points_sum = 0
+        
+        for i, mesh in enumerate(mesh_list):
+            try:
+                individual_tsdf = mesh_to_tsdf(mesh, size, resolution)
+                individual_internal_points = np.sum(individual_tsdf > 0.5)
+                individual_internal_points_sum += individual_internal_points
+                print(f"Mesh {i} internal points: {individual_internal_points}")
+            except Exception as e:
+                print(f"Error processing mesh {i}: {e}")
+                continue
+        
+        print(f"Sum of individual mesh internal points: {individual_internal_points_sum}")
+        
+        # Calculate penetration level
+        if individual_internal_points_sum > 0:
+            penetration_level = 1 - (merged_internal_points / individual_internal_points_sum)
+            penetration_level = max(0.0, min(1.0, penetration_level))  # Clamp to [0, 1]
+        else:
+            penetration_level = 0.0
+            print("Warning: No internal points found in individual meshes")
+        
+        print(f"Penetration level: {penetration_level:.6f}")
+        return float(penetration_level)
+        
+    except Exception as e:
+        print(f"Error computing penetration level: {e}")
+        return 0.0
+
+
+def compute_penetration_level_detailed(mesh_list, merged_mesh, size=0.3, resolution=40):
+    """
+    Compute detailed penetration analysis between merged mesh and individual meshes.
+    
+    Args:
+        mesh_list: List of trimesh.Trimesh objects
+        merged_mesh: Single merged trimesh.Trimesh object
+        size: Size of the workspace (float, default 0.3)
+        resolution: TSDF grid resolution (int, default 40)
+        
+    Returns:
+        dict: Detailed penetration analysis including per-mesh breakdown
+    """
+    if not mesh_list or merged_mesh is None:
+        print("Warning: Invalid input meshes")
+        return {
+            'penetration_level': 0.0,
+            'merged_internal_points': 0,
+            'individual_internal_points_sum': 0,
+            'per_mesh_internal_points': [],
+            'per_mesh_penetration': [],
+            'overlap_ratio': 0.0
+        }
+    
+    print(f"Computing detailed penetration analysis for {len(mesh_list)} individual meshes vs 1 merged mesh")
+    
+    try:
+        # Convert merged mesh to TSDF
+        merged_tsdf = mesh_to_tsdf(merged_mesh, size, resolution)
+        merged_internal_points = np.sum(merged_tsdf > 0.5)
+        
+        # Process individual meshes
+        per_mesh_internal_points = []
+        per_mesh_penetration = []
+        
+        for i, mesh in enumerate(mesh_list):
+            try:
+                individual_tsdf = mesh_to_tsdf(mesh, size, resolution)
+                individual_internal_points = np.sum(individual_tsdf > 0.5)
+                per_mesh_internal_points.append(individual_internal_points)
+                
+                # Calculate overlap with merged mesh
+                overlap = np.sum((individual_tsdf > 0.5) & (merged_tsdf > 0.5))
+                if individual_internal_points > 0:
+                    mesh_penetration = 1 - (overlap / individual_internal_points)
+                else:
+                    mesh_penetration = 0.0
+                per_mesh_penetration.append(mesh_penetration)
+                
+                print(f"Mesh {i}: internal={individual_internal_points}, overlap={overlap}, penetration={mesh_penetration:.6f}")
+                
+            except Exception as e:
+                print(f"Error processing mesh {i}: {e}")
+                per_mesh_internal_points.append(0)
+                per_mesh_penetration.append(0.0)
+        
+        individual_internal_points_sum = sum(per_mesh_internal_points)
+        
+        # Calculate overall penetration level
+        if individual_internal_points_sum > 0:
+            penetration_level = 1 - (merged_internal_points / individual_internal_points_sum)
+            penetration_level = max(0.0, min(1.0, penetration_level))
+        else:
+            penetration_level = 0.0
+        
+        # Calculate overlap ratio
+        if individual_internal_points_sum > 0:
+            overlap_ratio = merged_internal_points / individual_internal_points_sum
+        else:
+            overlap_ratio = 0.0
+        
+        results = {
+            'penetration_level': float(penetration_level),
+            'merged_internal_points': int(merged_internal_points),
+            'individual_internal_points_sum': int(individual_internal_points_sum),
+            'per_mesh_internal_points': per_mesh_internal_points,
+            'per_mesh_penetration': per_mesh_penetration,
+            'overlap_ratio': float(overlap_ratio)
+        }
+        
+        print(f"Overall penetration level: {penetration_level:.6f}")
+        print(f"Overlap ratio: {overlap_ratio:.6f}")
+        
+        return results
+        
+    except Exception as e:
+        print(f"Error computing detailed penetration analysis: {e}")
+        return {
+            'penetration_level': 0.0,
+            'merged_internal_points': 0,
+            'individual_internal_points_sum': 0,
+            'per_mesh_internal_points': [],
+            'per_mesh_penetration': [],
+            'overlap_ratio': 0.0
+        }
+
+def mesh_to_tsdf_messy_kitchen(mesh, size=0.7, resolution=40):
+    """
+    Convert mesh to TSDF for messy kitchen scenarios with different normalization.
+    
+    This function uses a larger workspace size (0.7) and different normalization
+    approach compared to the original mesh_to_tsdf function.
+    
+    Args:
+        mesh: trimesh.Trimesh object
+        size: Size of the workspace (float, default 0.7 for messy kitchen)
+        resolution: TSDF grid resolution (int, default 40)
+
+    Returns:
+        tsdf: TSDF grid (numpy array of shape [resolution, resolution, resolution])
+    """
+    # Create grid coordinates in [0, size) for messy kitchen
+    lin = torch.linspace(start=0, end=size - size / resolution, steps=resolution)
+    x, y, z = torch.meshgrid(lin, lin, lin, indexing='ij')
+    pos = torch.stack((x, y, z), dim=-1).float()  # (resolution, resolution, resolution, 3)
+    pos = pos.view(-1, 3)
+
+    # Convert mesh vertices and faces to correct format
+    vertices = np.asarray(mesh.vertices, dtype=np.float32)
+    faces = np.asarray(mesh.triangles, dtype=np.uint32)
+
+    # Ensure faces are 2D array
+    if faces.ndim == 3:
+        faces = np.asarray(mesh.faces, dtype=np.uint32)
+
+    f = SDF(vertices, faces)
+    sdf = f(pos)
+    sdf_reshaped = sdf.reshape(resolution, resolution, resolution)
+    sdf_trunc = 4 * (size / resolution)
+
+    mask = (sdf_reshaped >= sdf_trunc) | (sdf_reshaped <= -sdf_trunc)
+
+    tsdf = (sdf_reshaped / sdf_trunc + 1) / 2
+    tsdf[mask] = 0
+    return tsdf
+
+
+def compute_chamfer_and_iou_messy_kitchen(target_mesh, completed_mesh):
+    """Compute Chamfer distance and IoU between target mesh and completed mesh for messy kitchen scenarios.
+    
+    This function directly uses the input meshes without any normalization.
+    
+    Args:
+        target_mesh (trimesh.Trimesh): Ground truth target mesh
+        completed_mesh (trimesh.Trimesh): Completed mesh
+        
+    Returns:
+        tuple: (chamfer_distance, iou)
+    """
+    # Sample points from mesh surfaces for Chamfer distance
+    gt_points, _ = trimesh.sample.sample_surface(target_mesh, 2048)
+    completed_points, _ = trimesh.sample.sample_surface(completed_mesh, 2048)
+    
+    evaluator = MeshEvaluator(n_points=2048)
+    
+    # Compute Chamfer distance
+    eval_dict = evaluator.eval_pointcloud(
+        pointcloud=completed_points,
+        pointcloud_tgt=gt_points,
+        normals=None,
+        normals_tgt=None
+    )
+    chamfer_distance = eval_dict['chamfer-L1']
+    
+    # Sample points for IoU calculation
+    points_iou, occ_target = sample_iou_points(
+        mesh_list=[target_mesh],
+        bounds=target_mesh.bounds,
+        num_point=100000,
+        uniform=False,
+        size=1.0
+    )
+    
+    # Compute IoU
+    metrics = evaluator.eval_mesh(
+        mesh=completed_mesh,
+        pointcloud_tgt=gt_points,
+        normals_tgt=None,
+        points_iou=points_iou,
+        occ_tgt=occ_target,
+        remove_wall=False
+    )
+    iou = metrics['iou']
+    
+    return chamfer_distance, iou
+
+
+def compute_multi_object_completion_metrics_messy_kitchen(gt_meshes, pred_meshes, num_samples=10000):
+    """
+    Compute evaluation metrics for multi-object reconstruction in messy kitchen scenarios.
+    
+    This function uses scene-level normalization and the messy kitchen specific evaluation functions.
+    
+    Args:
+        gt_meshes: List of Ground Truth meshes (reference)
+        pred_meshes: List of predicted meshes (already aligned if using GAPS)
+        num_samples: Number of sample points for metric computation
+        
+    Returns:
+        Dictionary containing various metrics and aligned scenes
+    """
+    print(f"GT scene contains {len(gt_meshes)} objects")
+    print(f"Predicted scene contains {len(pred_meshes)} objects")
+    
+    if len(gt_meshes) == 0 or len(pred_meshes) == 0:
+        print("Warning: No valid meshes found")
+        return {
+            'chamfer_distance': float('inf'),
+            'iou': 0.0,
+            'chamfer_distance_std': 0.0,
+            'iou_std': 0.0,
+            'per_object_cds': [],
+            'per_object_ious': [],
+            'scene_iou': 0.0
+        }
+    
+    # Use the provided meshes directly (alignment already done in eval.py)
+    aligned_pred_meshes = pred_meshes
+    
+    # Step 4: Compute per-object metrics using messy kitchen specific functions
+    print("Step 4: Computing per-object metrics for messy kitchen scenario...")
+    per_object_cds = []
+    per_object_ious = []
+    
+    # For each predicted object, find best matching GT object and compute metrics
+    for i, pred_mesh in enumerate(aligned_pred_meshes):
+        best_cd = float('inf')
+        best_iou = 0.0
+        best_gt_idx = -1
+        
+        for j, gt_mesh in enumerate(gt_meshes):
+            try:
+                # Use the messy kitchen specific compute_chamfer_and_iou function
+                cd, iou = compute_chamfer_and_iou_messy_kitchen(gt_mesh, pred_mesh)
+                
+                # Optional: Save meshes for debugging
+                # gt_mesh.export(f"gt_{j}.ply", include_attributes=False)
+                # pred_mesh.export(f"pred_{i}.ply", include_attributes=False)
+                
+                if cd < best_cd:
+                    best_cd = cd
+                    best_iou = iou
+                    best_gt_idx = j
+                    
+            except Exception as e:
+                print(f"Error computing metrics for pred object {i} and GT object {j}: {e}")
+                continue
+        
+        if best_gt_idx >= 0:
+            per_object_cds.append(best_cd)
+            per_object_ious.append(best_iou)
+            print(f"Pred object {i} matched with GT object {best_gt_idx}: CD={best_cd:.6f}, IoU={best_iou:.6f}")
+        else:
+            per_object_cds.append(float('inf'))
+            per_object_ious.append(0.0)
+            print(f"No match found for pred object {i}")
+    
+    # Compute scene-level metrics
+    if per_object_cds:
+        scene_cd = np.mean(per_object_cds)
+        scene_iou = np.mean(per_object_ious)
+        scene_cd_std = np.std(per_object_cds)
+        scene_iou_std = np.std(per_object_ious)
+    else:
+        scene_cd = float('inf')
+        scene_iou = 0.0
+        scene_cd_std = 0.0
+        scene_iou_std = 0.0
+    
+    # Create metrics dictionary
+    metrics = {
+        'chamfer_distance': float(scene_cd),
+        'iou': float(scene_iou),
+        'chamfer_distance_std': float(scene_cd_std),
+        'iou_std': float(scene_iou_std),
+        'per_object_cds': per_object_cds,
+        'per_object_ious': per_object_ious,
+        'scene_iou': float(scene_iou)
+    }
+    
+    # Create aligned scenes for compatibility
+    aligned_gt_scene = trimesh.Scene(gt_meshes)
+    aligned_pred_scene = trimesh.Scene(aligned_pred_meshes)
+    
+    # Store aligned scenes for later use
+    metrics['aligned_gt_scene'] = aligned_gt_scene
+    metrics['aligned_pred_scene'] = aligned_pred_scene
+    
+    # Create merged meshes for compatibility
+    if len(gt_meshes) > 1:
+        metrics['aligned_gt_merged'] = trimesh.util.concatenate(gt_meshes)
+    else:
+        metrics['aligned_gt_merged'] = gt_meshes[0] if gt_meshes else None
+    
+    if len(aligned_pred_meshes) > 1:
+        metrics['aligned_pred_merged'] = trimesh.util.concatenate(aligned_pred_meshes)
+    else:
+        metrics['aligned_pred_merged'] = aligned_pred_meshes[0] if aligned_pred_meshes else None
+    
+    print(f"Final scene metrics (messy kitchen): CD={metrics['chamfer_distance']:.6f}±{metrics['chamfer_distance_std']:.6f}, "
+          f"IoU={metrics['iou']:.6f}±{metrics['iou_std']:.6f}")
+    
+    return metrics

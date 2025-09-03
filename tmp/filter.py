@@ -3,9 +3,9 @@ import json
 import shutil
 
 # 定义路径
-urdf_dir = "/usr/stud/dira/GraspInClutter/targo/data/acronym/urdfs_acronym"
-category_json = "/usr/stud/dira/GraspInClutter/targo/data/acronym/category_type.json"
-backup_dir = "/usr/stud/dira/GraspInClutter/targo/data/acronym/urdfs_acronym_backup"
+urdf_dir = "/home/ran.ding/projects/TARGO/data//acronym/urdfs_acronym"
+category_json = "/home/ran.ding/projects/TARGO/data//acronym/category_type.json"
+backup_dir = "/home/ran.ding/projects/TARGO/data//acronym/urdfs_acronym_backup"
 
 # 确保备份目录存在
 os.makedirs(backup_dir, exist_ok=True)

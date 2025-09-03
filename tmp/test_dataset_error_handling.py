@@ -18,7 +18,7 @@ def test_ptv3_scene_error_handling():
         from src.vgn.dataset_voxel import DatasetVoxel_PTV3_Scene
         
         # 使用测试数据路径
-        raw_root = Path("/usr/stud/dira/GraspInClutter/targo/data_scenes/targo_dataset")
+        raw_root = Path("data_scenes/targo_dataset")
         root = raw_root
         
         print("创建DatasetVoxel_PTV3_Scene数据集...")
@@ -56,7 +56,7 @@ def test_ptv3_scene_error_handling():
         print(f"  加载失败: {error_count}")
         
         # 检查错误日志文件
-        error_log_file = Path("/usr/stud/dira/GraspInClutter/targo/data_check_results/dataset_error_scenes.txt")
+        error_log_file = Path("/home/ran.ding/projects/TARGO/data/_check_results/dataset_error_scenes.txt")
         if error_log_file.exists():
             print(f"\n错误日志文件存在: {error_log_file}")
             with open(error_log_file, 'r', encoding='utf-8') as f:

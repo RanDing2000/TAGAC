@@ -31,7 +31,7 @@ def analyze_metadata_files(directory):
     }
 
 # 分析目录
-directory = "/usr/stud/dira/GraspInClutter/targo/eval_results_test/targo/2025-01-29_09-22-41"
+directory = "/home/ran.ding/projects/TARGO/eval_results_test/targo/2025-01-29_09-22-41"
 results = analyze_metadata_files(directory)
 
 print(f"最佳CD (最小值):")

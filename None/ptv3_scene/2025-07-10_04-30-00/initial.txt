@@ -1,8 +1,8 @@
-model: /usr/stud/dira/GraspInClutter/targo/checkpoints/ptv3_scene.pt
+model: /home/ran.ding/projects/TARGO/checkpoints/ptv3_scene.pt
 shape_completion: False
 sc_model_path: None
-test_root: /storage/user/dira/nips_data_version6/test_set_gaussian_0.002
-occ_level_dict: /storage/user/dira/nips_data_version6/test_set_gaussian_0.002/occ_level_dict.json
+test_root: /home/ran.ding/projects/TARGO/data/nips_data_version6/test_set_gaussian_0.002
+occ_level_dict: /home/ran.ding/projects/TARGO/data/nips_data_version6/test_set_gaussian_0.002/occ_level_dict.json
 out_th: 0.5
 qual_th: 0.9
 best: True
@@ -17,7 +17,7 @@ description: ptv3_scene_inference
 sim_gui: False
 vis: False
 video_recording: False
-target_file: /usr/stud/dira/GraspInClutter/targo/example_targets/target_list.txt
+target_file: /home/ran.ding/projects/TARGO/example_targets/target_list.txt
 hunyun2_path: None
 hunyuan3D_ptv3: True
 hunyuan3D_path: None

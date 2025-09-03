@@ -3,8 +3,8 @@ import json
 import os
 
 # 输入和输出路径
-csv_file = "/usr/stud/dira/GraspInClutter/targo/data/acronym/grasps_acronym_metadata.csv"
-json_output = "/usr/stud/dira/GraspInClutter/targo/data/acronym/urdf_scales.json"
+csv_file = "/home/ran.ding/projects/TARGO/data//acronym/grasps_acronym_metadata.csv"
+json_output = "/home/ran.ding/projects/TARGO/data//acronym/urdf_scales.json"
 
 # 创建用于存储结果的字典
 urdf_scales = {}

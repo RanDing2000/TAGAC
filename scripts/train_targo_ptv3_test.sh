@@ -10,11 +10,11 @@ module load compiler/gcc-8.3
 module load cuda/11.3.0
 
 # Navigate to project directory
-cd /usr/stud/dira/GraspInClutter/targo
+cd /home/ran.ding/projects/TARGO
 
 # Training parameters
-DATASET_PATH="/storage/user/dira/nips_data_version6/combined"
-LOG_DIR="/usr/stud/dira/GraspInClutter/grasping/train_logs_targo_ptv3"
+DATASET_PATH="/home/ran.ding/projects/TARGO/data/nips_data_version6/combined"
+LOG_DIR="/home/ran.ding/projects/TARGO/train_logs_targo_ptv3"
 BATCH_SIZE=2
 EPOCHS=5
 LEARNING_RATE=2e-4
@@ -39,8 +39,8 @@ python scripts/train_targo_ptv3.py \
     --augment \
     --shape_completion True \
     --input_points tsdf_points \
-    --sc_model_config "/usr/stud/dira/GraspInClutter/grasping/src/shape_completion/configs/stso/AdaPoinTr.yaml" \
-    --sc_model_checkpoint "/usr/stud/dira/GraspInClutter/grasping/checkpoints_gaussian/sc_net/ckpt-best_0425.pth" \
+    --sc_model_config "/home/ran.ding/projects/TARGO/src/shape_completion/configs/stso/AdaPoinTr.yaml" \
+    --sc_model_checkpoint "/home/ran.ding/projects/TARGO/checkpoints_gaussian/sc_net/ckpt-best_0425.pth" \
     --description "targo_ptv3_test_run"
 
 echo "Training completed!" 

@@ -6,9 +6,9 @@
 set -e  # Exit on any error
 
 # Configuration
-RAW_DATASET="/storage/user/dira/nips_data_version6/combined/targo_dataset"
-PROCESSED_DATASET="/storage/user/dira/nips_data_version6/combined/targo_dataset"
-LOG_DIR="/usr/stud/dira/GraspInClutter/grasping/train_logs_targo_ptv3_complete"
+RAW_DATASET="/home/ran.ding/projects/TARGO/data/nips_data_version6/combined/targo_dataset"
+PROCESSED_DATASET="/home/ran.ding/projects/TARGO/data/nips_data_version6/combined/targo_dataset"
+LOG_DIR="/home/ran.ding/projects/TARGO/train_logs_targo_ptv3_complete"
 
 echo "============================================================"
 echo "Complete Target Mesh Training for TARGO PTv3"

@@ -1,6 +1,6 @@
 import numpy as np
 from .triangle_hash import TriangleHash as _TriangleHash
-
+np.bool = bool
 
 def check_mesh_contains(mesh, points, hash_resolution=512):
     intersector = MeshIntersector(mesh, hash_resolution)

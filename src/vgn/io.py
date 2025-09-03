@@ -250,7 +250,7 @@ def read_targ_pc(root, scene_id):
     from pathlib import Path
 
     path = Path(root) / "scenes" / f"{scene_id}.npz"
-    invalid_file = "/usr/stud/dira/GraspInClutter/targo/scripts/invalid_scene_id.txt"
+    invalid_file = "/home/ran.ding/projects/TARGO/scripts/invalid_scene_id.txt"
 
     try:
         with np.load(path, allow_pickle=True) as data:

@@ -12,7 +12,7 @@ import sys
 import os
 
 # Add project root to path
-sys.path.append('/usr/stud/dira/GraspInClutter/targo')
+sys.path.append('/home/ran.ding/projects/TARGO')
 
 from src.vgn.utils import create_tsdf
 from src.vgn.simulation import ClutterRemovalSim

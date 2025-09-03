@@ -117,9 +117,9 @@ def run(
     height_label_dict = {}
     tgt_bbx_label_dict = {}
     skip_dict = {}
-    scene_name_path = '/usr/stud/dira/GraspInClutter/Gen3DSR/scene_names.txt'
+    scene_name_path = '/home/ran.ding/projects/Gen3DSR/scene_names.txt'
     scene_name_list = open(scene_name_path, 'r').readlines()
-    root_path = '/usr/stud/dira/GraspInClutter/Gen3DSR/data_scenes/test_set_gaussian_0.002'
+    root_path = '/home/ran.ding/projects/Gen3DSR/data_scenes/test_set_gaussian_0.002'
     gen3dsr_scene_name_list = [line.strip() for line in scene_name_list]
 
     # Loop over the test set
@@ -286,7 +286,7 @@ def run(
         # if scene_pc is not None:
         #     generate_and_transform_grasp_meshes(
         #         grasp, scene_pc,
-        #         '/usr/stud/dira/GraspInClutter/grasping/demo_targo'
+        #         '/home/ran.ding/projects/TARGO/demo_targo'
         #     )
 
         grasp.width = sim.gripper.max_opening_width

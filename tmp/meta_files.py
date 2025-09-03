@@ -24,7 +24,7 @@ def analyze_metadata_files(directory):
     return highest_50_cd
 
 # 分析目录
-directory = "/usr/stud/dira/GraspInClutter/targo/eval_results_test/targo/2025-01-29_09-22-41"
+directory = "/home/ran.ding/projects/TARGO/eval_results_test/targo/2025-01-29_09-22-41"
 highest_50_cd = analyze_metadata_files(directory)
 
 print("CD最高的50个场景:")

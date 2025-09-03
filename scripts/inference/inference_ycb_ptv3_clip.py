@@ -8,8 +8,7 @@ import subprocess
 
 import numpy as np
 import sys
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
+sys.path.append('/home/ran.ding/projects/TARGO')
 # Grasp planner modules - 专门使用PTV3ClipImplicit
 from src.vgn.detection_ptv3_implicit import PTV3ClipImplicit
 
@@ -205,13 +204,13 @@ if __name__ == "__main__":
                         help="Experiment description.")
     
     # Visualization and debugging
-    parser.add_argument("--sim-gui", type=str2bool, default=True,
+    parser.add_argument("--sim-gui", type=str2bool, default=False,
                         help="Whether to enable a simulation GUI.")
     parser.add_argument("--vis", type=str2bool, default=False,
                         help="Whether to visualize and save the affordance map.")
     parser.add_argument("--video-recording", type=str2bool, default=True,
                         help="Whether to record videos of grasping attempts.")
-    parser.add_argument("--target-file", type=str, default='/usr/stud/dira/GraspInClutter/targo/example_targets/target_list.txt',
+    parser.add_argument("--target-file", type=str, default='/home/ran.ding/projects/TARGO/example_targets/target_list.txt',
                         help="Path to a .txt file containing target names to record. If provided, only videos of these targets will be recorded.")
     
     # Legacy parameters (kept for compatibility but not used)
@@ -229,20 +228,20 @@ if __name__ == "__main__":
     # Set paths based on occlusion level
     if args.occlusion_level == "medium":
         if args.hunyun2_path is None:
-            args.hunyun2_path = '/usr/stud/dira/GraspInClutter/Gen3DSR/hunyuan_results/ycb/medium'
+            args.hunyun2_path = '/home/ran.ding/projects/Gen3DSR/hunyuan_results/ycb/medium'
         if args.hunyuan3D_path is None:
-            args.hunyuan3D_path = '/usr/stud/dira/GraspInClutter/Gen3DSR/hunyuan_results/ycb/medium'
+            args.hunyuan3D_path = '/home/ran.ding/projects/Gen3DSR/hunyuan_results/ycb/medium'
         if args.result_root is None:
             args.result_root = 'targo_eval_results/ycb/eval_results_ptv3_clip-medium-occlusion'
         if args.test_root is None:
             args.test_root = 'data_scenes/ycb/maniskill-ycb-v2-middle-occlusion-1000'
         if args.occ_level_dict is None:
-            args.occ_level_dict = '/usr/stud/dira/GraspInClutter/targo/data_scenes/ycb/maniskill-ycb-v2-middle-occlusion-1000/test_set/occlusion_level_dict.json'
+            args.occ_level_dict = 'data_scenes/ycb/maniskill-ycb-v2-middle-occlusion-1000/test_set/occlusion_level_dict.json'
     elif args.occlusion_level == "slight":
         if args.hunyun2_path is None:
-            args.hunyun2_path = '/usr/stud/dira/GraspInClutter/Gen3DSR/hunyuan_results/ycb/slight'
+            args.hunyun2_path = '/home/ran.ding/projects/Gen3DSR/hunyuan_results/ycb/slight'
         if args.hunyuan3D_path is None:
-            args.hunyuan3D_path = '/usr/stud/dira/GraspInClutter/Gen3DSR/hunyuan_results/ycb/slight'
+            args.hunyuan3D_path = '/home/ran.ding/projects/Gen3DSR/hunyuan_results/ycb/slight'
         if args.result_root is None:
             args.result_root = 'targo_eval_results/ycb/eval_results_ptv3_clip-slight-occlusion'
         if args.test_root is None:
@@ -251,9 +250,9 @@ if __name__ == "__main__":
             args.occ_level_dict = 'data_scenes/ycb/maniskill-ycb-v2-slight-occlusion-1000/test_set/occlusion_level_dict.json'
     elif args.occlusion_level == "no":
         if args.hunyun2_path is None:
-            args.hunyun2_path = '/usr/stud/dira/GraspInClutter/Gen3DSR/hunyuan_results/ycb/no'
+            args.hunyun2_path = '/home/ran.ding/projects/Gen3DSR/hunyuan_results/ycb/no'
         if args.hunyuan3D_path is None:
-            args.hunyuan3D_path = '/usr/stud/dira/GraspInClutter/Gen3DSR/hunyuan_results/ycb/no'
+            args.hunyuan3D_path = '/home/ran.ding/projects/Gen3DSR/hunyuan_results/ycb/no'
         if args.result_root is None:
             args.result_root = 'targo_eval_results/ycb/eval_results_ptv3_clip-no-occlusion'
         if args.test_root is None:

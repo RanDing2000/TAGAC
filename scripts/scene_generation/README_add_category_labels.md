@@ -44,9 +44,9 @@ python scripts/scene_generation/add_category_labels_clip_feature.py \
 
 ### 参数说明
 
-- `--scenes_dir`: 包含场景npz文件的目录 (默认: `/usr/stud/dira/GraspInClutter/targo/data_scenes/targo_dataset/scenes`)
-- `--mesh_pose_dir`: 包含mesh_pose_dict文件的目录 (默认: `/usr/stud/dira/GraspInClutter/targo/data_scenes/targo_dataset/mesh_pose_dict`)
-- `--output_dir`: 输出增强文件的目录 (默认: `/usr/stud/dira/GraspInClutter/targo/data_scenes/targo_dataset/scenes_enhanced`)
+- `--scenes_dir`: 包含场景npz文件的目录 (默认: `data_scenes/targo_dataset/scenes`)
+- `--mesh_pose_dir`: 包含mesh_pose_dict文件的目录 (默认: `data_scenes/targo_dataset/mesh_pose_dict`)
+- `--output_dir`: 输出增强文件的目录 (默认: `data_scenes/targo_dataset/scenes_enhanced`)
 - `--backup_original`: 在处理前备份原始文件
 - `--max_files`: 最大处理文件数 (用于测试)
 

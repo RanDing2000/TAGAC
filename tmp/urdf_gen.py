@@ -52,4 +52,4 @@ def create_urdf_files(directory):
         print(f"Created URDF file: {urdf_filename}")
 
 # 使用函数
-create_urdf_files('/usr/stud/dira/GraspInClutter/targo/data/maniskill_ycb/mani_skill2_ycb/collisions')
+create_urdf_files('/home/ran.ding/projects/TARGO/data//maniskill_ycb/mani_skill2_ycb/collisions')

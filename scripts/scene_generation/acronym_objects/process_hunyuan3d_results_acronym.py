@@ -227,7 +227,7 @@ def save_error_dirs_to_txt(error_dirs, script_dir, dataset_name="acronym_hunyuan
 def main():
     parser = argparse.ArgumentParser(description='Process ACRONYM Hunyuan3D reconstruction results to generate point clouds and TSDF')
     parser.add_argument('--hunyuan_path', type=str, 
-                       default='/usr/stud/dira/GraspInClutter/Gen3DSR/hunyuan_results/acronym/slight',
+                       default='/home/ran.ding/projects/Gen3DSR/hunyuan_results/acronym/slight',
                        help='Path to ACRONYM Hunyuan3D results directory')
     parser.add_argument('--max_scenes', type=int, default=None,
                        help='Maximum number of scenes to process (default: all)')

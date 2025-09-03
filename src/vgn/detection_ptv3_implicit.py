@@ -625,7 +625,7 @@ class PTV3SceneImplicit(object):
         self.pos = pos.view(1, self.resolution * self.resolution * self.resolution, 3)
 
         # Load plane points
-        plane = np.load("/usr/stud/dira/GraspInClutter/grasping/setup/plane_sampled.npy")
+        plane = np.load("/home/ran.ding/projects/TARGO/setup/plane_sampled.npy")
         plane = plane.astype(np.float32)
         self.plane = plane / 0.3 - 0.5
 
@@ -834,7 +834,7 @@ class PTV3SceneImplicit(object):
                     if rgb_img is not None and depth_img is not None:
                         # scene_id = os.path.basename(state.vis_path).split('_')[0]
                         scene_id = os.path.basename(state.vis_path)
-                        root_path = '/usr/stud/dira/GraspInClutter/targo/data_scenes/acronym/acronym-middle-occlusion-1000/scenes'
+                        root_path = 'data_scenes/acronym/acronym-middle-occlusion-1000/scenes'
                         scene_path = os.path.join(root_path, f'{scene_id}.npz')
                         scene_file = np.load(scene_path)
                         extrinsics = scene_file['extrinsics']
@@ -987,7 +987,7 @@ class PTV3ClipImplicit(object):
         self.pos = pos.view(1, self.resolution * self.resolution * self.resolution, 3)
 
         # Load plane points
-        plane = np.load("/usr/stud/dira/GraspInClutter/grasping/setup/plane_sampled.npy")
+        plane = np.load("/home/ran.ding/projects/TARGO/setup/plane_sampled.npy")
         plane = plane.astype(np.float32)
         self.plane = plane / 0.3 - 0.5
 
@@ -1249,7 +1249,7 @@ class PTV3ClipImplicit(object):
                     if rgb_img is not None and depth_img is not None:
                         # scene_id = os.path.basename(state.vis_path).split('_')[0]
                         scene_id = os.path.basename(state.vis_path)
-                        root_path = '/usr/stud/dira/GraspInClutter/targo/data_scenes/acronym/acronym-middle-occlusion-1000/scenes'
+                        root_path = 'data_scenes/acronym/acronym-middle-occlusion-1000/scenes'
                         scene_path = os.path.join(root_path, f'{scene_id}.npz')
                         scene_file = np.load(scene_path)
                         extrinsics = scene_file['extrinsics']
@@ -1402,7 +1402,7 @@ class PTV3ClipGTImplicit(object):
         self.pos = pos.view(1, self.resolution * self.resolution * self.resolution, 3)
 
         # Load plane points
-        plane = np.load("/usr/stud/dira/GraspInClutter/grasping/setup/plane_sampled.npy")
+        plane = np.load("/home/ran.ding/projects/TARGO/setup/plane_sampled.npy")
         plane = plane.astype(np.float32)
         self.plane = plane / 0.3 - 0.5
 
@@ -1674,7 +1674,7 @@ class PTV3ClipGTImplicit(object):
                     if rgb_img is not None and depth_img is not None:
                         # scene_id = os.path.basename(state.vis_path).split('_')[0]
                         scene_id = os.path.basename(state.vis_path)
-                        root_path = '/usr/stud/dira/GraspInClutter/targo/data_scenes/acronym/acronym-middle-occlusion-1000/scenes'
+                        root_path = 'data_scenes/acronym/acronym-middle-occlusion-1000/scenes'
                         scene_path = os.path.join(root_path, f'{scene_id}.npz')
                         scene_file = np.load(scene_path)
                         extrinsics = scene_file['extrinsics']
@@ -1826,7 +1826,7 @@ class PTV3SceneGTImplicit(object):
         self.pos = pos.view(1, self.resolution * self.resolution * self.resolution, 3)
 
         # Load plane points
-        plane = np.load("/usr/stud/dira/GraspInClutter/grasping/setup/plane_sampled.npy")
+        plane = np.load("/home/ran.ding/projects/TARGO/setup/plane_sampled.npy")
         plane = plane.astype(np.float32)
         self.plane = plane / 0.3 - 0.5
 
@@ -2018,7 +2018,7 @@ class PTV3SceneGTImplicit(object):
                     if rgb_img is not None and depth_img is not None:
                         # scene_id = os.path.basename(state.vis_path).split('_')[0]
                         scene_id = os.path.basename(state.vis_path)
-                        root_path = '/usr/stud/dira/GraspInClutter/targo/data_scenes/acronym/acronym-middle-occlusion-1000/scenes'
+                        root_path = 'data_scenes/acronym/acronym-middle-occlusion-1000/scenes'
                         scene_path = os.path.join(root_path, f'{scene_id}.npz')
                         scene_file = np.load(scene_path)
                         extrinsics = scene_file['extrinsics']

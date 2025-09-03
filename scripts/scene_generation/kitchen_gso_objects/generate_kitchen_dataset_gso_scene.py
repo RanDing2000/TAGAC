@@ -31,6 +31,9 @@ except ImportError:
     print("Warning: ptvis not available, skipping visualization")
     PTVIS_AVAILABLE = False
 
+import sys
+# sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', '..', 'src'))
+sys.path.append('/home/ran.ding/projects/TARGO')
 from src.vgn.utils.misc import apply_noise
 from src.vgn.io import *
 from src.vgn.perception import *
@@ -392,7 +395,7 @@ def main(args):
     # if args.is_acronym:
     #     object_count = np.random.randint(2, 6)  # 11 is excluded
     # else:
-    object_count = np.random.randint(4, 11)  # 11 is excluded
+    object_count = np.random.randint(1, 9)  # 11 is excluded
     sim.reset(object_count, is_gso=True)
     sim.save_state()
 
@@ -774,7 +777,7 @@ def create_ptvis_render(mesh_pose_dict, output_path, scene_id, target_id=None, e
 
 def save_scene_as_combined_mesh(sim, scene_id, mesh_pose_dict, output_dir, extrinsics=None):
     """
-    Save all objects in the scene as a combined mesh file and create ptvis rendering.
+    Save all objects in the scene as a combined mesh file with original textures and create ptvis rendering.
     
     Parameters:
     - sim: Simulation instance
@@ -798,10 +801,42 @@ def save_scene_as_combined_mesh(sim, scene_id, mesh_pose_dict, output_dir, extri
             
             try:
                 mesh_path, scale, pose = obj_info[0], obj_info[1], obj_info[2]
-                mesh = trimesh.load(mesh_path)
-                mesh.apply_scale(scale)
-                mesh.apply_transform(pose)
-                combined_scene.add_geometry(mesh, node_name=f"object_{obj_id}")
+                
+                # Load mesh with original textures
+                mesh = trimesh.load(mesh_path, process=False)  # process=False to preserve original textures
+                
+                # Handle different mesh types (single mesh or scene with multiple meshes)
+                if isinstance(mesh, trimesh.Scene):
+                    # If it's a scene, extract all meshes and add them individually
+                    for mesh_name, mesh_obj in mesh.geometry.items():
+                        if hasattr(mesh_obj, 'vertices'):  # Ensure it's a mesh
+                            mesh_obj.apply_scale(scale)
+                            mesh_obj.apply_transform(pose)
+                            
+                            # Fix color factor issues for each mesh object
+                            if hasattr(mesh_obj, 'visual') and mesh_obj.visual is not None:
+                                if hasattr(mesh_obj.visual, 'material'):
+                                    material = mesh_obj.visual.material
+                                    if hasattr(material, 'baseColorFactor'):
+                                        # Set baseColorFactor to None to let texture colors show properly
+                                        material.baseColorFactor = None
+                            
+                            combined_scene.add_geometry(mesh_obj, node_name=f"object_{obj_id}_{mesh_name}")
+                else:
+                    # Single mesh
+                    mesh.apply_scale(scale)
+                    mesh.apply_transform(pose)
+                    
+                    # Fix color factor issues for single mesh
+                    if hasattr(mesh, 'visual') and mesh.visual is not None:
+                        if hasattr(mesh.visual, 'material'):
+                            material = mesh.visual.material
+                            if hasattr(material, 'baseColorFactor'):
+                                # Set baseColorFactor to None to let texture colors show properly
+                                material.baseColorFactor = None
+                    
+                    combined_scene.add_geometry(mesh, node_name=f"object_{obj_id}")
+                    
             except Exception as e:
                 print(f"Warning: Could not add object {obj_id} to combined scene: {e}")
                 continue
@@ -809,12 +844,21 @@ def save_scene_as_combined_mesh(sim, scene_id, mesh_pose_dict, output_dir, extri
         # Save the combined scene as G1B file
         base_filename = f"{scene_id}_combined"
         
-        # Save as PLY file (G1B format)
-        ply_path = g1b_dir / f"{base_filename}.ply"
-        ply_data = combined_scene.export(file_type='ply')
-        with open(ply_path, 'wb') as f:
-            f.write(ply_data)
-        print(f"Saved combined PLY: {ply_path}")
+        # Save as GLB file with original textures
+        glb_path = g1b_dir / f"{base_filename}.glb"
+        try:
+            glb_data = combined_scene.export(file_type='glb')
+            with open(glb_path, 'wb') as f:
+                f.write(glb_data)
+            print(f"Saved combined GLB with textures: {glb_path}")
+        except Exception as e:
+            print(f"Warning: Could not save GLB file: {e}")
+            # Fallback to PLY if GLB fails
+            ply_path = g1b_dir / f"{base_filename}.ply"
+            ply_data = combined_scene.export(file_type='ply')
+            with open(ply_path, 'wb') as f:
+                f.write(ply_data)
+            print(f"Saved combined PLY (fallback): {ply_path}")
         
         # Save metadata as JSON (excluding plane)
         metadata_path = g1b_dir / f"{base_filename}_metadata.json"
@@ -840,12 +884,12 @@ def save_scene_as_combined_mesh(sim, scene_id, mesh_pose_dict, output_dir, extri
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--root",type=Path, default= '/usr/stud/dira/GraspInClutter/targo/messy_kitchen_scenes/gso_pile_scenes')
+    parser.add_argument("--root",type=Path, default= '/home/ran.ding/projects/TARGO/messy_kitchen_scenes/gso_pile_scenes_test_1')
     parser.add_argument("--scene", type=str, choices=["pile", "packed"], default="pile")
-    parser.add_argument("--object-set", type=str, default="packed/train")
+    parser.add_argument("--object-set", type=str, default="mess_kitchen/test", choices=["mess_kitchen/train",  "mess_kitchen/test"])
     parser.add_argument("--num-grasps", type=int, default=10000)
     parser.add_argument("--grasps-per-scene", type=int, default=120)
-    parser.add_argument("--num-scenes", type=int, default=1000, help="Number of scenes to generate")
+    parser.add_argument("--num-scenes", type=int, default=100, help="Number of scenes to generate")
     parser.add_argument("--save-scene", default=True)
     parser.add_argument("--random", action="store_true", help="Add distribution to camera pose")
     parser.add_argument("--sim-gui", action="store_true", default=False)

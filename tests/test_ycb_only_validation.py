@@ -11,7 +11,7 @@ import numpy as np
 from pathlib import Path
 
 # Add the project root to Python path
-project_root = "/usr/stud/dira/GraspInClutter/targo"
+project_root = "/home/ran.ding/projects/TARGO"
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 

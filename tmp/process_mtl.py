@@ -3,7 +3,7 @@ import re
 from glob import glob
 
 # 定义目录路径
-center_dir = "/usr/stud/dira/GraspInClutter/targo/data/acronym/ShapeNetSem-backup/models-OBJ/models_center"
+center_dir = "/home/ran.ding/projects/TARGO/data//acronym/ShapeNetSem-backup/models-OBJ/models_center"
 
 def update_texture_paths(mtl_file):
     with open(mtl_file, 'r') as f:

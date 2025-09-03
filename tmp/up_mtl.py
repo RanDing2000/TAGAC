@@ -2,7 +2,7 @@ import os
 import re
 
 # 定义MTL文件所在目录
-mtl_dir = "/usr/stud/dira/GraspInClutter/targo/data/acronym/ShapeNetSem-backup/models-OBJ/models"
+mtl_dir = "/home/ran.ding/projects/TARGO/data//acronym/ShapeNetSem-backup/models-OBJ/models"
 
 # 定义要替换的路径前缀
 old_prefix = "ShapeNetSem-backup/models-textures/textures/"

@@ -200,7 +200,7 @@ def save_error_files_to_txt(error_files, script_dir, dataset_name="ycb"):
 def main():  
     parser = argparse.ArgumentParser(description='Add complete_target_tsdf to YCB dataset scenes')
     parser.add_argument('--dataset_path', type=str, 
-                       default='/usr/stud/dira/GraspInClutter/targo/data_scenes/ycb/maniskill-ycb-v2-middle-occlusion-1000',
+                       default='data_scenes/ycb/maniskill-ycb-v2-middle-occlusion-1000',
                        help='Path to YCB dataset directory')
     parser.add_argument('--max_scenes', type=int, default=None,
                        help='Maximum number of scenes to process (default: all)')

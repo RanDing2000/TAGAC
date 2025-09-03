@@ -50,10 +50,10 @@ def main():
     parser.add_argument('--dry_run', action='store_true',
                        help='Analyze files without modifying them')
     parser.add_argument('--acronym_path', type=str,
-                       default='/usr/stud/dira/GraspInClutter/targo/data_scenes/acronym/acronym-slight-occlusion-1000',
+                       default='data_scenes/acronym/acronym-slight-occlusion-1000',
                        help='Path to ACRONYM dataset')
     parser.add_argument('--ycb_path', type=str,
-                       default='/usr/stud/dira/GraspInClutter/targo/data_scenes/ycb/maniskill-ycb-v2-slight-occlusion-1000',
+                       default='data_scenes/ycb/maniskill-ycb-v2-slight-occlusion-1000',
                        help='Path to YCB dataset')
     
     args = parser.parse_args()

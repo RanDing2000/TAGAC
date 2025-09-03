@@ -161,7 +161,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="PTV3 CLIP Inference on VGN Dataset")
 
     # Model configuration (simplified for ptv3_clip_gt only)
-    parser.add_argument("--model", type=Path, default='/usr/stud/dira/GraspInClutter/targo/checkpoints/ptv3_clip.pt',
+    parser.add_argument("--model", type=Path, default='/home/ran.ding/projects/TARGO/checkpoints/ptv3_clip.pt',
                         help="Path to the ptv3_clip model checkpoint")
     parser.add_argument("--shape_completion", type=str2bool, default=False,
                         help="Whether to use shape completion during inference")
@@ -169,9 +169,9 @@ if __name__ == "__main__":
                         help="Path to shape completion model (if shape_completion=True)")
     
     # Dataset configuration
-    parser.add_argument("--test_root", type=str, default='/storage/user/dira/nips_data_version6/test_set_gaussian_0.002',
+    parser.add_argument("--test_root", type=str, default='/home/ran.ding/projects/TARGO/data/nips_data_version6/test_set_gaussian_0.002',
                         help="Root directory of test dataset")
-    parser.add_argument("--occ_level_dict", type=str, default='/storage/user/dira/nips_data_version6/test_set_gaussian_0.002/occ_level_dict.json',
+    parser.add_argument("--occ_level_dict", type=str, default='/home/ran.ding/projects/TARGO/data/nips_data_version6/test_set_gaussian_0.002/occ_level_dict.json',
                         help="Path to occlusion level dictionary JSON file")
     
     # Inference parameters
@@ -207,7 +207,7 @@ if __name__ == "__main__":
                         help="Whether to visualize and save the affordance map.")
     parser.add_argument("--video-recording", type=str2bool, default=True,
                         help="Whether to record videos of grasping attempts.")
-    parser.add_argument("--target-file", type=str, default='/usr/stud/dira/GraspInClutter/targo/example_targets/target_list.txt',
+    parser.add_argument("--target-file", type=str, default='/home/ran.ding/projects/TARGO/example_targets/target_list.txt',
                         help="Path to a .txt file containing target names to record. If provided, only videos of these targets will be recorded.")
     
     # Legacy parameters (kept for compatibility but not used)

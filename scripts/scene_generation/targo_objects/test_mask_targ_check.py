@@ -55,7 +55,7 @@ def check_mask_targ_in_directory(scenes_dir, max_files=None):
 def main():
     parser = argparse.ArgumentParser(description="Test script to check mask_targ existence in npz files")
     parser.add_argument("--scenes_dir", type=str, 
-                       default="/usr/stud/dira/GraspInClutter/targo/data_scenes/targo_dataset/scenes",
+                       default="data_scenes/targo_dataset/scenes",
                        help="Directory containing scene npz files")
     parser.add_argument("--max_files", type=int, default=10,
                        help="Maximum number of files to check (for testing)")

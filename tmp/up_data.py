@@ -7,8 +7,8 @@ def centralize_obj_vertices(mtl_file):
     mesh_id = os.path.splitext(os.path.basename(mtl_file))[0]
     
     # 构建源obj和目标obj的路径
-    source_obj = f"/usr/stud/dira/GraspInClutter/targo/data/acronym/ShapeNetSem-backup/models-OBJ/models/{mesh_id}.obj"
-    target_obj = f"/usr/stud/dira/GraspInClutter/targo/data/acronym/ShapeNetSem-backup/models-OBJ/models_center/{mesh_id}.obj"
+    source_obj = f"/home/ran.ding/projects/TARGO/data//acronym/ShapeNetSem-backup/models-OBJ/models/{mesh_id}.obj"
+    target_obj = f"/home/ran.ding/projects/TARGO/data//acronym/ShapeNetSem-backup/models-OBJ/models_center/{mesh_id}.obj"
     
     if not os.path.exists(source_obj):
         print(f"找不到源文件: {source_obj}")
@@ -49,7 +49,7 @@ def centralize_obj_vertices(mtl_file):
     return True
 
 # 主处理流程
-center_dir = "/usr/stud/dira/GraspInClutter/targo/data/acronym/ShapeNetSem-backup/models-OBJ/models_center"
+center_dir = "/home/ran.ding/projects/TARGO/data//acronym/ShapeNetSem-backup/models-OBJ/models_center"
 
 # 统计变量
 total_files = 0

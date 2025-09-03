@@ -2,7 +2,7 @@ import os
 import re
 
 # 定义目标目录
-target_dir = "/usr/stud/dira/GraspInClutter/targo/data/acronym/collisions_tabletop"
+target_dir = "/home/ran.ding/projects/TARGO/data//acronym/collisions_tabletop"
 
 # 统计变量
 total_files = 0

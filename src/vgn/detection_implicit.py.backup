@@ -39,7 +39,7 @@ import sys
 # from src.FGCGraspNet.dataset.graspnet_dataset import GraspNetDataset
 # from src.FGCGraspNet.models.decode import pred_decode
 # from graspnetAPI import GraspGroup
-# sys.path.append('/usr/stud/dira/GraspInClutter/targo/src/anygrasp_sdk/grasp_detection')
+# sys.path.append('/home/ran.ding/projects/TARGO/src/anygrasp_sdk/grasp_detection')
 # from gsnet import AnyGrasp
 # from graspnetAPI import GraspGroup
 
@@ -213,21 +213,21 @@ class VGNImplicit(object):
             self.net = FGC_graspnet(input_feature_dim=0, num_view=300, num_angle=12, num_depth=4,
             cylinder_radius=0.05, hmin=0.055, hmax=0.30, is_training=False, is_demo=True)
             self.net.to(self.device)
-            checkpoint = torch.load('/usr/stud/dira/GraspInClutter/targo/src/FGCGraspNet/checkpoints/realsense_checkpoint.tar')
+            checkpoint = torch.load('/home/ran.ding/projects/TARGO/src/FGCGraspNet/checkpoints/realsense_checkpoint.tar')
             self.net.load_state_dict(checkpoint['model_state_dict'])
             self.net.eval()
         elif model_type == 'AnyGrasp' or model_type == 'AnyGrasp_full_targ':
             # Conditional import for AnyGrasp
             try:
                 import sys
-                sys.path.append('/usr/stud/dira/GraspInClutter/targo/src/anygrasp_sdk/grasp_detection')
+                sys.path.append('/home/ran.ding/projects/TARGO/src/anygrasp_sdk/grasp_detection')
                 from gsnet import AnyGrasp
             except ImportError as e:
                 raise ImportError(f"AnyGrasp dependencies not available: {e}")
             
             # Initialize AnyGrasp with configuration parameters
             parser = argparse.ArgumentParser()
-            parser.add_argument('--checkpoint_path', default='/usr/stud/dira/GraspInClutter/targo/src/anygrasp_sdk/grasp_detection/log/checkpoint_detection.tar', help='Model checkpoint path')
+            parser.add_argument('--checkpoint_path', default='/home/ran.ding/projects/TARGO/src/anygrasp_sdk/grasp_detection/log/checkpoint_detection.tar', help='Model checkpoint path')
             parser.add_argument('--max_gripper_width', type=float, default=0.08, help='Maximum gripper width (<=0.1m)')
             parser.add_argument('--gripper_height', type=float, default=0.03, help='Gripper height')
             parser.add_argument('--top_down_grasp', action='store_true', help='Output top-down grasps.')
@@ -270,7 +270,7 @@ class VGNImplicit(object):
         pos = torch.stack((x, y, z), dim=-1).float().unsqueeze(0).to(self.device)   
         self.pos = pos.view(1, self.resolution * self.resolution * self.resolution, 3)  ## pos: 1, 64000, -0.5, 0.475
 
-        plane = np.load("/usr/stud/dira/GraspInClutter/grasping/setup/plane_sampled.npy")
+        plane = np.load("/home/ran.ding/projects/TARGO/setup/plane_sampled.npy")
         plane = plane.astype(np.float32)
         self.plane = plane / 0.3 - 0.5
         # self.plane = torch.from_numpy(plane).to(self.device)
@@ -353,7 +353,7 @@ class VGNImplicit(object):
             # inputs = state.scene_pc
             if state.type == 'FGC_full_targ':
                 inputs = np.concatenate((state.targ_full_pc, state.scene_no_targ_pc), axis=0)
-                # plane_hs = np.load('/usr/stud/dira/GraspInClutter/targo/data/plane_hs.npy')
+                # plane_hs = np.load('/home/ran.ding/projects/TARGO/data//plane_hs.npy')
                 # inputs = np.concatenate((inputs, plane_hs), axis=0)
                 save_point_cloud_as_ply(inputs, 'scene_pc.ply')
             elif state.type == 'FGC-GraspNet':
@@ -417,7 +417,7 @@ class VGNImplicit(object):
         elif state.type == 'AnyGrasp' or state.type == 'AnyGrasp_full_targ':
             if state.type == 'AnyGrasp_full_targ':
                 inputs = np.concatenate((state.targ_full_pc, state.scene_no_targ_pc), axis=0)
-                # plane_hs = np.load('/usr/stud/dira/GraspInClutter/targo/data/plane_hs.npy')
+                # plane_hs = np.load('/home/ran.ding/projects/TARGO/data//plane_hs.npy')
                 # inputs = np.concatenate((inputs, plane_hs), axis=0)
                 save_point_cloud_as_ply(inputs, 'scene_pc.ply')
             else:
@@ -850,7 +850,7 @@ def predict(inputs, pos, net, sc_net, type, device, visual_dict=None, hunyun2_pa
                 
             elif type == 'targo_hunyun2':
                 start_pc = time.time()
-                # hunyun2_path = '/usr/stud/dira/GraspInClutter/Gen3DSR/output_amodal/ycb_amodal_medium_occlusion_icp_v7_only_gt_1000'
+                # hunyun2_path = '/home/ran.ding/projects/Gen3DSR/output_amodal/ycb_amodal_medium_occlusion_icp_v7_only_gt_1000'
                 scene_path = hunyun2_path + '/' + scene_name + '/reconstruction/targ_obj_hy3dgen_align.ply'
                 gt_scene_path = hunyun2_path + '/' + scene_name + '/reconstruction/gt_targ_obj.ply'
                 meta_eval_path = hunyun2_path + '/' + scene_name + '/evaluation/meta_evaluation.txt'
@@ -963,7 +963,7 @@ def predict(inputs, pos, net, sc_net, type, device, visual_dict=None, hunyun2_pa
             cloud = inputs
             # Convert PyTorch tensor to numpy array
             cloud_np = inputs[0].cpu().numpy()
-            plane_hs = np.load('/usr/stud/dira/GraspInClutter/targo/data/plane_hs.npy')
+            plane_hs = np.load('/home/ran.ding/projects/TARGO/data//plane_hs.npy')
             cloud_np = np.concatenate((cloud_np, plane_hs), axis=0)
             # Create open3d point cloud object
             cloud = o3d.geometry.PointCloud()

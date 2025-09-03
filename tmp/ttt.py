@@ -4,8 +4,8 @@ from glob import glob
 from pathlib import Path
 
 # 定义目录路径
-center_dir = "/usr/stud/dira/GraspInClutter/targo/data/acronym/ShapeNetSem-backup/models-OBJ/models_center"
-source_dir = "/usr/stud/dira/GraspInClutter/targo/data/acronym/ShapeNetSem-backup/models-OBJ/models"
+center_dir = "/home/ran.ding/projects/TARGO/data//acronym/ShapeNetSem-backup/models-OBJ/models_center"
+source_dir = "/home/ran.ding/projects/TARGO/data//acronym/ShapeNetSem-backup/models-OBJ/models"
 
 # 统计变量
 total_files = 0

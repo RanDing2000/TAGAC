@@ -23,8 +23,8 @@
 3. **SAM**: 已包含在 `src/segment-anything/` 目录中
 
 4. **模型权重文件**: 需要下载以下文件到指定位置
-   - `groundingdino_swint_ogc.pth` - GroundingDINO权重 (默认路径: `/usr/stud/dira/GraspInClutter/targo/src/GroundingDINO/`)
-   - `sam_vit_h_4b8939.pth` - SAM权重 (默认路径: `/usr/stud/dira/GraspInClutter/targo/src/GroundingDINO/`)
+   - `groundingdino_swint_ogc.pth` - GroundingDINO权重 (默认路径: `/home/ran.ding/projects/TARGO/src/GroundingDINO/`)
+   - `sam_vit_h_4b8939.pth` - SAM权重 (默认路径: `/home/ran.ding/projects/TARGO/src/GroundingDINO/`)
 
 ## 快速开始
 
@@ -97,11 +97,11 @@ python demo.py \
 
 ### 参数说明
 
-- `--image_path`: 输入图像路径 (默认: `/usr/stud/dira/GraspInClutter/targo/scripts/demo/image.png`)
+- `--image_path`: 输入图像路径 (默认: `/home/ran.ding/projects/TARGO/scripts/demo/image.png`)
 - `--text_prompt`: 文本描述，用于检测目标对象 (默认: "black figure")
 - `--output_path`: 输出图像保存路径 (默认: "output_masked.png")
-- `--dino_checkpoint`: GroundingDINO模型权重路径 (默认: `/usr/stud/dira/GraspInClutter/targo/src/GroundingDINO/groundingdino_swint_ogc.pth`)
-- `--sam_checkpoint`: SAM模型权重路径 (默认: `/usr/stud/dira/GraspInClutter/targo/src/GroundingDINO/sam_vit_h_4b8939.pth`)
+- `--dino_checkpoint`: GroundingDINO模型权重路径 (默认: `/home/ran.ding/projects/TARGO/src/GroundingDINO/groundingdino_swint_ogc.pth`)
+- `--sam_checkpoint`: SAM模型权重路径 (默认: `/home/ran.ding/projects/TARGO/src/GroundingDINO/sam_vit_h_4b8939.pth`)
 - `--box_threshold`: 边界框置信度阈值 (默认: 0.3)
 - `--text_threshold`: 文本置信度阈值 (默认: 0.25)
 - `--device`: 使用的设备 (auto, cuda, cpu) (默认: auto)
@@ -195,10 +195,10 @@ name '_C' is not defined
 python test_imports.py
 
 # 检查模型文件
-ls -la /usr/stud/dira/GraspInClutter/targo/src/GroundingDINO/*.pth
+ls -la /home/ran.ding/projects/TARGO/src/GroundingDINO/*.pth
 
 # 检查默认图像
-ls -la /usr/stud/dira/GraspInClutter/targo/scripts/demo/image.png
+ls -la /home/ran.ding/projects/TARGO/scripts/demo/image.png
 
 # 检查C++扩展
 python -c "import groundingdino._C; print('C++ extension available')"

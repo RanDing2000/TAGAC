@@ -163,7 +163,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="PTV3 Scene Inference on ACRONYM Dataset")
 
     # Model configuration (simplified for ptv3_scene only)
-    parser.add_argument("--model", type=Path, default='/usr/stud/dira/GraspInClutter/targo/checkpoints/ptv3_scene.pt',
+    parser.add_argument("--model", type=Path, default='/home/ran.ding/projects/TARGO/checkpoints/ptv3_scene.pt',
                         help="Path to the ptv3_scene model checkpoint")
     parser.add_argument("--shape_completion", type=str2bool, default=False,
                         help="Whether to use shape completion during inference")
@@ -211,7 +211,7 @@ if __name__ == "__main__":
                         help="Whether to visualize and save the affordance map.")
     parser.add_argument("--video-recording", type=str2bool, default=False,
                         help="Whether to record videos of grasping attempts.")
-    parser.add_argument("--target-file", type=str, default='/usr/stud/dira/GraspInClutter/targo/example_targets/acronym_target_list.txt',
+    parser.add_argument("--target-file", type=str, default='/home/ran.ding/projects/TARGO/example_targets/acronym_target_list.txt',
                         help="Path to a .txt file containing target names to record. If provided, only videos of these targets will be recorded.")
     
     # Legacy parameters (kept for compatibility but not used)
@@ -229,9 +229,9 @@ if __name__ == "__main__":
     # Set paths based on occlusion level
     if args.occlusion_level == "medium":
         if args.hunyun2_path is None:
-            args.hunyun2_path = '/usr/stud/dira/GraspInClutter/Gen3DSR/hunyuan_results/acronym/medium'
+            args.hunyun2_path = '/home/ran.ding/projects/Gen3DSR/hunyuan_results/acronym/medium'
         if args.hunyuan3D_path is None:
-            args.hunyuan3D_path = '/usr/stud/dira/GraspInClutter/Gen3DSR/hunyuan_results/acronym/medium'
+            args.hunyuan3D_path = '/home/ran.ding/projects/Gen3DSR/hunyuan_results/acronym/medium'
         if args.result_root is None:
             args.result_root = 'targo_eval_results/acronym/eval_results_ptv3_scene-medium-occlusion'  
         if args.logdir is None:
@@ -239,12 +239,12 @@ if __name__ == "__main__":
         if args.test_root is None:
             args.test_root = 'data_scenes/acronym/acronym-middle-occlusion-1000'
         if args.occ_level_dict is None:
-            args.occ_level_dict = '/usr/stud/dira/GraspInClutter/targo/data_scenes/acronym/acronym-middle-occlusion-1000/test_set/occlusion_level_dict.json'
+            args.occ_level_dict = 'data_scenes/acronym/acronym-middle-occlusion-1000/test_set/occlusion_level_dict.json'
     elif args.occlusion_level == "slight":
         if args.hunyun2_path is None:
-            args.hunyun2_path = '/usr/stud/dira/GraspInClutter/Gen3DSR/hunyuan_results/acronym/slight'
+            args.hunyun2_path = '/home/ran.ding/projects/Gen3DSR/hunyuan_results/acronym/slight'
         if args.hunyuan3D_path is None:
-            args.hunyuan3D_path = '/usr/stud/dira/GraspInClutter/Gen3DSR/hunyuan_results/acronym/slight'
+            args.hunyuan3D_path = '/home/ran.ding/projects/Gen3DSR/hunyuan_results/acronym/slight'
         if args.result_root is None:
             args.result_root = 'targo_eval_results/acronym/eval_results_ptv3_scene-slight-occlusion'
         if args.logdir is None:
@@ -255,9 +255,9 @@ if __name__ == "__main__":
             args.occ_level_dict = 'data_scenes/acronym/acronym-slight-occlusion-1000/test_set/occlusion_level_dict.json'
     elif args.occlusion_level == "no":
         if args.hunyun2_path is None:
-            args.hunyun2_path = '/usr/stud/dira/GraspInClutter/Gen3DSR/hunyuan_results/acronym/no'
+            args.hunyun2_path = '/home/ran.ding/projects/Gen3DSR/hunyuan_results/acronym/no'
         if args.hunyuan3D_path is None:
-            args.hunyuan3D_path = '/usr/stud/dira/GraspInClutter/Gen3DSR/hunyuan_results/acronym/no'
+            args.hunyuan3D_path = '/home/ran.ding/projects/Gen3DSR/hunyuan_results/acronym/no'
         if args.result_root is None:
             args.result_root = 'targo_eval_results/acronym/eval_results_ptv3_scene-no-occlusion'
         if args.logdir is None:

@@ -249,12 +249,19 @@ def run(
         # Place objects
         for obj_id, mesh_info in enumerate(mp_data.item().values()):
             pose = Transform.from_matrix(mesh_info[2])
-            if data_type != 'acronym':
+            if data_type == 'ycb':
                 if mesh_info[0].split('/')[-1] == 'plane.obj':
                     urdf_path = mesh_info[0].replace(".obj", ".urdf")
                 else:
-                    # urdf_path = mesh_info[0].replace("_visual.obj", ".urdf")
-                    urdf_path = mesh_info[0].replace("_textured.obj", ".urdf")
+                    file_id = mesh_info[0].split('/')[-1].replace("_textured.obj", "").replace(".obj", "")
+                    urdf_base_dir = "/home/ran.ding/projects/TARGO/data/maniskill_ycb/mani_skill2_ycb/collisions"
+                    urdf_path = f"{urdf_base_dir}/{file_id}.urdf"
+                
+                # Fix mesh path from old path to new path
+                if mesh_info[0].startswith('/usr/stud/dira/GraspInClutter/targo/'):
+                    mesh_info = list(mesh_info)
+                    mesh_info[0] = mesh_info[0].replace('/usr/stud/dira/GraspInClutter/targo/', '/home/ran.ding/projects/TARGO/')
+                    mesh_info = tuple(mesh_info)
             
             elif data_type == 'acronym':
                 # Extract file ID part (without path and extension)
@@ -264,7 +271,7 @@ def run(
                 else:
                     file_id = file_basename.replace("_textured.obj", "").replace(".obj", "")
                     
-                    urdf_base_dir = "/usr/stud/dira/GraspInClutter/targo/data/acronym/urdfs_acronym"
+                    urdf_base_dir = "/home/ran.ding/projects/TARGO/data//acronym/urdfs_acronym"
                     
                     # Method 1: Directly build path (if no category prefix)
                     urdf_path = f"{urdf_base_dir}/{file_id}.urdf"
@@ -301,7 +308,7 @@ def run(
             if obj_id == tgt_id:
                 body.set_color(link_index=-1, rgba_color=(1.0, 0.0, 0.0, 1.0))
                 targ_name = urdf_path.split('/')[-1].split('.')[0]
-                ycb_object_category_dict = json.load(open('/usr/stud/dira/GraspInClutter/targo/targo_eval_results/stastics_analysis/ycb_prompt_dict.json'))
+                ycb_object_category_dict = json.load(open('/home/ran.ding/projects/TARGO/targo_eval_results/stastics_analysis/ycb_prompt_dict.json'))
                 target_category = ycb_object_category_dict[targ_name]
                 target_mesh_gt = tri_mesh
         
@@ -615,7 +622,7 @@ def run(
         # if scene_pc is not None:
         #     generate_and_transform_grasp_meshes(
         #         grasp, scene_pc,
-        #         '/usr/stud/dira/GraspInClutter/grasping/demo_targo'
+        #         '/home/ran.ding/projects/TARGO/demo_targo'
         #     )
 
         grasp.width = sim.gripper.max_opening_width
@@ -663,6 +670,12 @@ def run(
                             urdf_path = mesh_info[0].replace(".obj", ".urdf")
                         else:
                             urdf_path = mesh_info[0].replace("_textured.obj", ".urdf")
+                        
+                        # Fix mesh path from old path to new path
+                        if mesh_info[0].startswith('/usr/stud/dira/GraspInClutter/targo/'):
+                            mesh_info = list(mesh_info)
+                            mesh_info[0] = mesh_info[0].replace('/usr/stud/dira/GraspInClutter/targo/', '/home/ran.ding/projects/TARGO/')
+                            mesh_info = tuple(mesh_info)
                     
                     elif data_type == 'acronym':
                         # Extract file ID part (without path and extension)
@@ -674,7 +687,7 @@ def run(
                             file_id = file_basename.replace("_textured.obj", "").replace(".obj", "")
                             
                         # Base directory for URDF files
-                        urdf_base_dir = "/usr/stud/dira/GraspInClutter/targo/data/acronym/urdfs_acronym"
+                        urdf_base_dir = "/home/ran.ding/projects/TARGO/data//acronym/urdfs_acronym"
                         
                         # Method 1: Directly build path (if no category prefix)
                         urdf_path = f"{urdf_base_dir}/{file_id}.urdf"

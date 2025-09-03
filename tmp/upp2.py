@@ -3,7 +3,7 @@ import re
 from glob import glob
 
 # 定义目录路径
-urdf_dir = "/usr/stud/dira/GraspInClutter/targo/data/acronym/urdfs_acronym"
+urdf_dir = "/home/ran.ding/projects/TARGO/data//acronym/urdfs_acronym"
 
 # 统计变量
 total_files = 0

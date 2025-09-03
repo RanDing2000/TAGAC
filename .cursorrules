@@ -41,6 +41,8 @@ Only analyze .py code files in the project, no need to analyze .gitignore file
 - Load required modules:
   - module load compiler/gcc-8.3
   - module load cuda/11.3.0
+- IMPORTANT: User is currently in conda activate targo environment
+- Always use conda activate targo before running any commands
 
 ### PointTransformerV3-based Variants (targo_ptv3, ptv3_scene)
 - Project uses conda environment named 'ptv3'
@@ -1203,6 +1205,31 @@ These practices help maintain code quality and reproducibility across projects.
   10. Include coordinate range and distribution analysis for debugging
 
 ## [2024-03-21] MinkowskiEngine Version Compatibility
+
+## [2024-12-22] PTV3 CLIP推理脚本依赖问题解决
+- Problem Description:
+  - inference_acronym_ptv3_clip.py脚本无法运行，缺少多个依赖模块
+  - 主要问题包括：torch_scatter版本兼容性、pyvista缺失、ConvONets.data模块不存在
+  - CUDA版本不匹配：系统CUDA 12.4 vs PyTorch CUDA 11.7
+  
+- Solution:
+  - 安装兼容的torch_scatter版本：pip install torch-scatter==2.1.1+pt113cu117 -f https://data.pyg.org/whl/torch-1.13.0+cu117.html
+  - 安装pyvista：pip install pyvista
+  - 注释掉不存在的data模块导入：from src.vgn.ConvONets import data
+  - 修改脚本中的硬编码路径：/home/ran.ding/projects/TARGO -> /home/ran.ding/projects/TARGO
+  
+- Lessons Learned:
+  - torch_scatter需要与PyTorch版本完全匹配（包括CUDA版本）
+  - 使用预编译的wheel文件比从源码编译更可靠
+  - 硬编码路径在不同环境中会导致导入失败
+  - 缺失的模块导入应该被注释掉而不是删除，以保持代码结构
+
+- Prevention Measures:
+  1. 使用requirements.txt或environment.yaml文件管理依赖版本
+  2. 避免硬编码绝对路径，使用相对路径或环境变量
+  3. 添加依赖检查和优雅的错误处理
+  4. 记录所有依赖的版本兼容性要求
+  5. 使用虚拟环境确保依赖隔离
 
 ## [2024-12-21] DatasetVoxel_Target点云空数据错误处理
 - Problem Description:

@@ -9,8 +9,8 @@ from pathlib import Path
 
 def main():
     # Example usage
-    data_dir = Path("/usr/stud/dira/GraspInClutter/targo/messy_kitchen_scenes/gso_pile_scenes/visualizations/raw_data")
-    output_dir = Path("/usr/stud/dira/GraspInClutter/targo/messy_kitchen_scenes/gso_pile_scenes/visualizations/results")
+    data_dir = Path("/home/ran.ding/projects/TARGO/messy_kitchen_scenes/gso_pile_scenes/visualizations/raw_data")
+    output_dir = Path("/home/ran.ding/projects/TARGO/messy_kitchen_scenes/gso_pile_scenes/visualizations/results")
     
     # Check if data directory exists
     if not data_dir.exists():

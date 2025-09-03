@@ -26,7 +26,7 @@ def test_dataset_error_handling():
         # 使用实际数据路径
         raw_root = Path("data_scenes/targo_dataset")
         if not raw_root.exists():
-            raw_root = Path("/storage/user/dira/nips_data_version6/combined/targo_dataset")
+            raw_root = Path("/home/ran.ding/projects/TARGO/data/nips_data_version6/combined/targo_dataset")
         
         print(f"使用数据根目录: {raw_root}")
         print(f"数据目录存在: {raw_root.exists()}")
@@ -77,7 +77,7 @@ def test_dataset_error_handling():
         print(f"  失败: {error_count}")
         
         # 检查错误日志
-        error_log_file = Path("/usr/stud/dira/GraspInClutter/targo/dataset_error_scenes.txt")
+        error_log_file = Path("/home/ran.ding/projects/TARGO/data/set_error_scenes.txt")
         if error_log_file.exists():
             print(f"\n✅ 错误日志文件存在: {error_log_file}")
             with open(error_log_file, 'r', encoding='utf-8') as f:

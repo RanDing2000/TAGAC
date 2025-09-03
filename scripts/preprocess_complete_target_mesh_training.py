@@ -209,9 +209,9 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Preprocess complete target meshes for training dataset")
-    parser.add_argument("--raw_root", type=str, default='/storage/user/dira/nips_data_version6/combined/targo_dataset',
+    parser.add_argument("--raw_root", type=str, default='/home/ran.ding/projects/TARGO/data/nips_data_version6/combined/targo_dataset',
                         help="Path to raw dataset root containing mesh_pose_dict")
-    parser.add_argument("--output_root", type=str, default='/storage/user/dira/nips_data_version6/combined/targo_dataset',
+    parser.add_argument("--output_root", type=str, default='/home/ran.ding/projects/TARGO/data/nips_data_version6/combined/targo_dataset',
                         help="Path to output dataset root where scenes are stored")
     parser.add_argument("--max_scenes", type=int, default=0,
                         help="Maximum number of scenes to process (0 = all)")

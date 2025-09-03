@@ -597,7 +597,7 @@ def main(args):
 def create_train_val_loaders(root, root_raw, batch_size, val_split, augment, complete_shape, targ_grasp, set_theory, ablation_dataset, data_contain, decouple, use_complete_targ, model_type, input_points, shape_completion, vis_data, logdir, kwargs):
     # Load the dataset
     dataset = DatasetVoxel_PTV3_Scene(root, root_raw, augment=augment, ablation_dataset=ablation_dataset, model_type=model_type, 
-                                     use_complete_targ=use_complete_targ, debug=True, logdir=Path('/usr/stud/dira/GraspInClutter/targo/visualization'))
+                                     use_complete_targ=use_complete_targ, debug=True, logdir=Path('/home/ran.ding/projects/TARGO/visualization'))
     
     scene_ids = dataset.df['scene_id'].tolist()
 
@@ -1076,11 +1076,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--net", default="ptv3_scene", choices=["targo_ptv3", "ptv3_scene"], 
                         help="Network type: targo_ptv3 (scene+target) or ptv3_scene (scene only)")
-    parser.add_argument("--dataset", type=Path, default='/storage/user/dira/nips_data_version6/combined/targo_dataset')
+    parser.add_argument("--dataset", type=Path, default='/home/ran.ding/projects/TARGO/data/nips_data_version6/combined/targo_dataset')
     parser.add_argument("--data_contain", type=str, default="pc and targ_grid", help="Data content specification")
     parser.add_argument("--decouple", type=str2bool, default=False, help="Decouple flag")
-    parser.add_argument("--dataset_raw", type=Path, default='/storage/user/dira/nips_data_version6/combined/targo_dataset')
-    parser.add_argument("--logdir", type=Path, default="/usr/stud/dira/GraspInClutter/targo/train_logs/ptv3_scene")
+    parser.add_argument("--dataset_raw", type=Path, default='/home/ran.ding/projects/TARGO/data/nips_data_version6/combined/targo_dataset')
+    parser.add_argument("--logdir", type=Path, default="/home/ran.ding/projects/TARGO/train_logs/ptv3_scene")
     parser.add_argument("--description", type=str, default="")
     parser.add_argument("--savedir", type=str, default="")
     parser.add_argument("--epochs", type=int, default=10)
@@ -1102,8 +1102,8 @@ if __name__ == "__main__":
     # shape completion
     parser.add_argument("--input_points", type=str, default='tsdf_points', help="depth_bp | tsdf_points | depth_target_others_tsdf")
     parser.add_argument("--shape_completion", type=str2bool, default=False, help="If true, use shape completion")
-    parser.add_argument("--sc_model_config", type=str, default="/usr/stud/dira/GraspInClutter/grasping/src/shape_completion/configs/stso/AdaPoinTr.yaml", help="Shape completion model config")
-    parser.add_argument("--sc_model_checkpoint", type=str, default="/usr/stud/dira/GraspInClutter/grasping/checkpoints_gaussian/sc_net/ckpt-best_0425.pth", help="Shape completion model checkpoint")
+    parser.add_argument("--sc_model_config", type=str, default="/home/ran.ding/projects/TARGO/src/shape_completion/configs/stso/AdaPoinTr.yaml", help="Shape completion model config")
+    parser.add_argument("--sc_model_checkpoint", type=str, default="/home/ran.ding/projects/TARGO/checkpoints_gaussian/sc_net/ckpt-best_0425.pth", help="Shape completion model checkpoint")
 
     # wandb
     parser.add_argument("--use_wandb", type=str2bool, default=True, help="If true, use wandb for experiment tracking")

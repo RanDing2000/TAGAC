@@ -269,7 +269,7 @@ def run(
         if scene_pc is not None:
             generate_and_transform_grasp_meshes(
                 grasp, scene_pc,
-                '/usr/stud/dira/GraspInClutter/grasping/demo_targo'
+                '/home/ran.ding/projects/TARGO/demo_targo'
             )
 
         grasp.width = sim.gripper.max_opening_width

@@ -117,7 +117,7 @@ def test_imports():
     
     # 检查默认图像文件
     print("\n6. Checking default image file...")
-    default_image = "/usr/stud/dira/GraspInClutter/targo/scripts/demo/image.png"
+    default_image = "/home/ran.ding/projects/TARGO/scripts/demo/image.png"
     if os.path.exists(default_image):
         print(f"   ✓ Default image found: {default_image}")
     else:

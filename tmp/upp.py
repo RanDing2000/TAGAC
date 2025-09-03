@@ -3,8 +3,8 @@ import re
 from glob import glob
 
 # 定义目录路径
-urdf_dir = "/usr/stud/dira/GraspInClutter/targo/data/acronym/urdfs_acronym"
-backup_dir = "/usr/stud/dira/GraspInClutter/targo/data/acronym/urdfs_acronym_backup_mesh"
+urdf_dir = "/home/ran.ding/projects/TARGO/data//acronym/urdfs_acronym"
+backup_dir = "/home/ran.ding/projects/TARGO/data//acronym/urdfs_acronym_backup_mesh"
 
 # 确保备份目录存在
 os.makedirs(backup_dir, exist_ok=True)

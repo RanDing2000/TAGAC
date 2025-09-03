@@ -52,7 +52,7 @@ def load_json(filename: Union[str, pathlib.Path]):
 
 
 class YCBPathsLoader:
-    ycb_root = Path("/usr/stud/dira/GraspInClutter/targo/data/maniskill_ycb")
+    ycb_root = Path("/home/ran.ding/projects/TARGO/data//maniskill_ycb")
     MODEL_JSON = ycb_root / "mani_skill2_ycb/info_pick_v0.json"
     HEAVY_OBJECTS = ["006_mustard_bottle"]
 
@@ -103,9 +103,9 @@ def sim_select_scene(sim, indices):
     object_set = sim.object_set
     sim_selected = ClutterRemovalSim(scene, object_set, False)
     sim.urdf_root = Path("data/urdfs")
-    sim.ycb_root = Path("/usr/stud/dira/GraspInClutter/targo/data/urdfs/maniskill_ycb/mani_skill2_ycb/models")
-    sim.g1b_root = Path("/usr/stud/dira/GraspInClutter/targo/data/urdfs/g1b/models")
-    sim.acroym_root = Path("/usr/stud/dira/GraspInClutter/targo/data/urdfs/acronym/collisions_tabletop")
+    sim.ycb_root = Path("/home/ran.ding/projects/TARGO/data//urdfs/maniskill_ycb/mani_skill2_ycb/models")
+    sim.g1b_root = Path("/home/ran.ding/projects/TARGO/data//urdfs/g1b/models")
+    sim.acroym_root = Path("/home/ran.ding/projects/TARGO/data//urdfs/acronym/collisions_tabletop")
     # sim.object_urdfs_g1b = [f for f in sim.urdf_root.iterdir() if f.suffix == ".urdf"]
 
     sim_selected.add_noise = sim.add_noise
@@ -151,11 +151,14 @@ class ClutterRemovalSim(object):
         assert scene in ["pile", "packed"]
 
         self.urdf_root = Path("data/urdfs")
-        self.ycb_root = Path("/usr/stud/dira/GraspInClutter/targo/data/maniskill_ycb/mani_skill2_ycb/collisions")
-        self.g1b_root = Path("/usr/stud/dira/GraspInClutter/targo/data/g1b/collisions")
-        self.egad_root = Path("/usr/stud/dira/GraspInClutter/targo/data/egad/collisions")
-        self.gso_root = Path("/storage/user/dira/gso/google_scanned_objects/gso_kitchen_collisions")
-        self.acroym_root = Path("/storage/user/dira/gso/google_scanned_objects/gso_kitchen_collisions")
+        self.ycb_root = Path("/home/ran.ding/projects/TARGO/data//maniskill_ycb/mani_skill2_ycb/collisions")
+        self.g1b_root = Path("/home/ran.ding/projects/TARGO/data//g1b/collisions")
+        self.egad_root = Path("/home/ran.ding/projects/TARGO/data//egad/collisions")
+        if object_set == "mess_kitchen/train":
+            self.gso_root = Path("/home/ran.ding/projects/TARGO/data/urdfs/mess_kitchen/train")
+        elif object_set == "mess_kitchen/test":
+            self.gso_root = Path("/home/ran.ding/projects/TARGO/data/urdfs/mess_kitchen/test")
+        self.acroym_root = Path("data/urdfs/mess_kitchen/train")
         self.acroym_scales = load_json("data/acronym/acronym_scales.json")
         self.ycb_loader = YCBPathsLoader()
         self.scene = scene
@@ -616,7 +619,7 @@ class ClutterRemovalSim(object):
 
         # Load and process point clouds
         ## load plane.npy
-        plane = np.load("/usr/stud/dira/GraspInClutter/grasping/setup/plane_sampled.npy")
+        plane = np.load("/home/ran.ding/projects/TARGO/setup/plane_sampled.npy")
         plane = plane.astype(np.float32)
         pc_scene_no_targ = np.concatenate([data["pc_scene_no_targ"], plane], axis=0)
         # scene_pc_scene_no_targ = pc_scene_no_targ / 0.3 - 0.5
@@ -819,7 +822,7 @@ class ClutterRemovalSim(object):
         timing = time.time() - tic
 
         ## load plane.npy
-        plane = np.load("/usr/stud/dira/GraspInClutter/grasping/setup/plane_sampled.npy")
+        plane = np.load("/home/ran.ding/projects/TARGO/setup/plane_sampled.npy")
         plane = plane.astype(np.float32)
         pc_scene_no_targ = np.concatenate([data["pc_scene_no_targ"], plane], axis=0)
         # scene_pc_scene_no_targ = pc_scene_no_targ / 0.3 - 0.5
@@ -944,7 +947,7 @@ class ClutterRemovalSim(object):
         timing = time.time() - tic
 
         ## load plane.npy
-        plane = np.load("/usr/stud/dira/GraspInClutter/grasping/setup/plane_sampled.npy")
+        plane = np.load("/home/ran.ding/projects/TARGO/setup/plane_sampled.npy")
         plane = plane.astype(np.float32)
         pc_scene_no_targ = np.concatenate([data["pc_scene_no_targ"], plane], axis=0)
         # scene_pc_scene_no_targ = pc_scene_no_targ / 0.3 - 0.5
@@ -1089,7 +1092,7 @@ class ClutterRemovalSim(object):
 
         # Load and process point clouds
         ## load plane.npy
-        plane = np.load("/usr/stud/dira/GraspInClutter/grasping/setup/plane_sampled.npy")
+        plane = np.load("/home/ran.ding/projects/TARGO/setup/plane_sampled.npy")
         plane = plane.astype(np.float32)
         pc_scene_no_targ = np.concatenate([data["pc_scene_no_targ"], plane], axis=0)
         # scene_pc_scene_no_targ = pc_scene_no_targ / 0.3 - 0.5
@@ -1184,7 +1187,7 @@ class ClutterRemovalSim(object):
 
         tsdf = TSDFVolume(self.size, resolution)
         tgt_mask_tsdf = TSDFVolume(self.size, resolution)
-        plane = np.load("/usr/stud/dira/GraspInClutter/grasping/setup/plane_sampled.npy")
+        plane = np.load("/home/ran.ding/projects/TARGO/setup/plane_sampled.npy")
         plane = plane.astype(np.float32)
 
         half_size = self.size / 2
@@ -1350,8 +1353,8 @@ class ClutterRemovalSim(object):
         elif model == "FGC-GraspNet" or model == "AnyGrasp":
             # Load point clouds in world coordinates
             scene_pc = np.load(curr_scene_path)['pc_scene_depth_no_specify']
-            plane = np.load('/usr/stud/dira/GraspInClutter/targo/data/plane.npy')
-            plane_hs = np.load('/usr/stud/dira/GraspInClutter/targo/data/plane_hs.npy')
+            plane = np.load('/home/ran.ding/projects/TARGO/data//plane.npy')
+            plane_hs = np.load('/home/ran.ding/projects/TARGO/data//plane_hs.npy')
             scene_pc = np.concatenate((scene_pc, plane_hs), axis=0)
 
             
@@ -1386,7 +1389,7 @@ class ClutterRemovalSim(object):
             # Define a function to adjust point cloud to target size
             # Adjust scene_pc to target size
             # scene_pc = adjust_point_cloud_size(scene_pc)
-            # plane = np.load('/usr/stud/dira/GraspInClutter/targo/data/plane.npy')
+            # plane = np.load('/home/ran.ding/projects/TARGO/data//plane.npy')
             # scene_pc = np.concatenate((scene_pc, plane), axis=0)
             # Convert depth image to point cloud for FGC-GraspNet
             # Load depth image and extrinsic parameters

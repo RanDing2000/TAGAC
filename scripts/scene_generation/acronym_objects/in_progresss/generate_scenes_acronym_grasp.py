@@ -377,7 +377,7 @@ def process_test_scene(sim, test_mesh_pose_list, test_scenes, scene_name, curr_m
         else:
             file_id = file_basename.replace("_textured.obj", "").replace(".obj", "")
             
-            urdf_base_dir = "/usr/stud/dira/GraspInClutter/targo/data/acronym/urdfs_acronym"
+            urdf_base_dir = "/home/ran.ding/projects/TARGO/data//acronym/urdfs_acronym"
             
             # Method 1: Directly build path (if no category prefix)
             urdf_path = f"{urdf_base_dir}/{file_id}.urdf"
@@ -1220,7 +1220,7 @@ rendering quality comparable to GUI mode.
     )
     
     # Core scene generation arguments
-    parser.add_argument("--root", type=Path, default='/usr/stud/dira/GraspInClutter/targo/data_scenes/acronym/acronym_grasp',
+    parser.add_argument("--root", type=Path, default='data_scenes/acronym/acronym_grasp',
                         help="Root directory for saving generated scenes and data")
     parser.add_argument("--scene", type=str, choices=["pile", "packed"], default="packed",
                         help="Scene type: pile (randomly dropped) or packed (organized)")

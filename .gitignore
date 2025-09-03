@@ -65,3 +65,10 @@ src/**/__pycache__/
 *.csv
 *.mp4
 messy_kitchen_scenes/
+Miniconda3.sh
+src/shape_completion/
+*.glb
+*.ply
+src/vgn/
+tmp_mesh/
+checkpoints.tar.gz

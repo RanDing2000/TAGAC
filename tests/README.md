@@ -32,7 +32,7 @@
 ### 运行单个测试
 ```bash
 # 从项目根目录运行
-cd /usr/stud/dira/GraspInClutter/targo
+cd /home/ran.ding/projects/TARGO
 python tests/test_dataset_error_handling.py
 ```
 

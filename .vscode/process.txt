@@ -1,7 +1,7 @@
 
 #!/bin/bash
 
-ROOT_DIR="/usr/stud/dira/GraspInClutter/targo/targo_eval_results/acronym/eval_results_ptv3_clip-medium-occlusion/ptv3_clip"
+ROOT_DIR="/home/ran.ding/projects/TARGO/targo_eval_results/acronym/eval_results_ptv3_clip-medium-occlusion/ptv3_clip"
 
 # 遍历所有子目录
 find "$ROOT_DIR" -type d | while read dir; do
@@ -12,4 +12,4 @@ done
 
 
 
-python grounded_sam_demo.py   --config GroundingDINO/groundingdino/config/GroundingDINO_SwinT_OGC.py   --grounded_checkpoint groundingdino_swint_ogc.pth   --sam_checkpoint sam_vit_h_4b8939.pth   --input_image /usr/stud/dira/GraspInClutter/targo/scripts/vlm/Grounded-Segment-Anything/assets/demo_targo+++.png   --output_dir "outputs_targo+++"   --box_threshold 0.35   --text_threshold 0.25   --text_prompt "Xbox Console"   --device "cuda"
+python grounded_sam_demo.py   --config GroundingDINO/groundingdino/config/GroundingDINO_SwinT_OGC.py   --grounded_checkpoint groundingdino_swint_ogc.pth   --sam_checkpoint sam_vit_h_4b8939.pth   --input_image /home/ran.ding/projects/TARGO/scripts/vlm/Grounded-Segment-Anything/assets/demo_targo+++.png   --output_dir "outputs_targo+++"   --box_threshold 0.35   --text_threshold 0.25   --text_prompt "Xbox Console"   --device "cuda"

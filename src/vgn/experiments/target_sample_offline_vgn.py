@@ -301,7 +301,7 @@ def run(
             if obj_id == tgt_id:
                 body.set_color(link_index=-1, rgba_color=(1.0, 0.0, 0.0, 1.0))
                 targ_name = urdf_path.split('/')[-1].split('.')[0]
-                vgn_object_category_dict = json.load(open('/usr/stud/dira/GraspInClutter/targo/data/targo_category/vgn_objects_category_full.json'))
+                vgn_object_category_dict = json.load(open('/home/ran.ding/projects/TARGO/data//targo_category/vgn_objects_category_full.json'))
                 target_category = vgn_object_category_dict[targ_name]
                 target_mesh_gt = tri_mesh
 
@@ -731,7 +731,7 @@ def run(
         # if scene_pc is not None:
         #     generate_and_transform_grasp_meshes(
         #         grasp, scene_pc,
-        #         '/usr/stud/dira/GraspInClutter/grasping/demo_targo'
+        #         '/home/ran.ding/projects/TARGO/demo_targo'
         #     )
 
         grasp.width = sim.gripper.max_opening_width
@@ -790,7 +790,7 @@ def run(
                             file_id = file_basename.replace("_textured.obj", "").replace(".obj", "")
                             
                         # Base directory for URDF files
-                        urdf_base_dir = "/usr/stud/dira/GraspInClutter/targo/data/acronym/urdfs_acronym"
+                        urdf_base_dir = "/home/ran.ding/projects/TARGO/data//acronym/urdfs_acronym"
                         
                         # Method 1: Directly build path (if no category prefix)
                         urdf_path = f"{urdf_base_dir}/{file_id}.urdf"

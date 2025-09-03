@@ -60,7 +60,7 @@ def convert_ply_to_obj(input_file, output_file):
 
 def main():
     # 设置路径
-    base_path = "/usr/stud/dira/GraspInClutter/targo/data/g1b"
+    base_path = "/home/ran.ding/projects/TARGO/data//g1b"
     models_dir = os.path.join(base_path, "models")
     collisions_dir = os.path.join(base_path, "collisions")
     

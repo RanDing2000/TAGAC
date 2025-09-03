@@ -8,8 +8,8 @@ with open('category_type.json', 'r') as f:
     category_type = json.load(f)
 
 # 源目录和目标目录
-src_dir = "/usr/stud/dira/GraspInClutter/targo/data/acronym/collisions"
-dest_dir = "/usr/stud/dira/GraspInClutter/targo/data/acronym/collisions_tabletop"
+src_dir = "/home/ran.ding/projects/TARGO/data//acronym/collisions"
+dest_dir = "/home/ran.ding/projects/TARGO/data//acronym/collisions_tabletop"
 
 # 确保目标目录存在
 os.makedirs(dest_dir, exist_ok=True)

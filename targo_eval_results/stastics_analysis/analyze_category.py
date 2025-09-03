@@ -15,9 +15,9 @@ def parse_arguments():
 
 def get_category_file(data_type):
     if data_type == 'ycb':
-        return '/usr/stud/dira/GraspInClutter/targo/targo_eval_results/stastics_analysis/ycb_prompt_dict.json'
+        return '/home/ran.ding/projects/TARGO/targo_eval_results/stastics_analysis/ycb_prompt_dict.json'
     elif data_type == 'acronym':
-        return '/usr/stud/dira/GraspInClutter/targo/targo_eval_results/stastics_analysis/acronym_prompt_dict.json'
+        return '/home/ran.ding/projects/TARGO/targo_eval_results/stastics_analysis/acronym_prompt_dict.json'
     else:
         raise ValueError(f'Unsupported data_type: {data_type}')
 

@@ -505,8 +505,8 @@ def worker(args, seed):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--root",type=Path, default= "/storage/user/dira/giga/demo/data_set_theory_01")
-    # parser.add_argument("--root",type=Path, default= "/storage/user/dira/nips_data_version1")
+    parser.add_argument("--root",type=Path, default= "/home/ran.ding/projects/TARGO/data/giga/demo/data_set_theory_01")
+    # parser.add_argument("--root",type=Path, default= "/home/ran.ding/projects/TARGO/data/nips_data_version1")
     parser.add_argument("--scene", type=str, choices=["pile", "packed"], default="packed")
     parser.add_argument("--object-set", type=str, default="packed/train")
     parser.add_argument("--num-grasps", type=int, default=10000)

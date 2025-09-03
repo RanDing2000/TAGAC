@@ -3,7 +3,7 @@ import re
 from glob import glob
 
 # Define directory path
-urdf_dir = "/usr/stud/dira/GraspInClutter/targo/data/acronym/urdfs_acronym"
+urdf_dir = "/home/ran.ding/projects/TARGO/data//acronym/urdfs_acronym"
 
 # Statistics variables
 total_files = 0

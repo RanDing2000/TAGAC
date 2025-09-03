@@ -5,8 +5,8 @@ from glob import glob
 from pathlib import Path
 
 # 定义源目录和目标目录
-source_dir = "/usr/stud/dira/GraspInClutter/targo/data/acronym/ShapeNetSem-backup/models-OBJ/models_watertight"
-target_dir = "/usr/stud/dira/GraspInClutter/targo/data/acronym/ShapeNetSem-backup/models-OBJ/models_watertight_center"
+source_dir = "/home/ran.ding/projects/TARGO/data//acronym/ShapeNetSem-backup/models-OBJ/models_watertight"
+target_dir = "/home/ran.ding/projects/TARGO/data//acronym/ShapeNetSem-backup/models-OBJ/models_watertight_center"
 
 # 确保目标目录存在
 os.makedirs(target_dir, exist_ok=True)

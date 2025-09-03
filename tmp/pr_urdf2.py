@@ -6,9 +6,9 @@ import xml.etree.ElementTree as ET
 from glob import glob
 
 # Define directory paths
-urdf_dir = "/usr/stud/dira/GraspInClutter/targo/data/acronym/urdfs_acronym"
+urdf_dir = "/home/ran.ding/projects/TARGO/data//acronym/urdfs_acronym"
 h5_dir = "/usr/stud/dira/GraspInClutter/acronym/data/grasps"
-backup_dir = "/usr/stud/dira/GraspInClutter/targo/data/acronym/urdfs_acronym"
+backup_dir = "/home/ran.ding/projects/TARGO/data//acronym/urdfs_acronym"
 
 # Ensure backup directory exists
 os.makedirs(backup_dir, exist_ok=True)

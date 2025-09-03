@@ -131,7 +131,7 @@ def process_test_scene(sim, test_mesh_pose_list, test_scenes, scene_name, curr_m
         else:
             file_id = file_basename.replace("_textured.obj", "").replace(".obj", "")
             
-            urdf_base_dir = "/usr/stud/dira/GraspInClutter/targo/data/acronym/urdfs_acronym"
+            urdf_base_dir = "/home/ran.ding/projects/TARGO/data//acronym/urdfs_acronym"
             
             # Method 1: Directly build path (if no category prefix)
             urdf_path = f"{urdf_base_dir}/{file_id}.urdf"
@@ -351,7 +351,7 @@ def main(args):
         scene_name = curr_mesh_pose_list[:-4]
         scene_id = scene_name.split('_c_')[0]
         npz_scene_name  = scene_name + '.npz'
-        scene_root = '/usr/stud/dira/GraspInClutter/targo/data_scenes/acronym/acronym-slight-occlusion-1000/scenes'
+        scene_root = 'data_scenes/acronym/acronym-slight-occlusion-1000/scenes'
         scene_path = os.path.join(scene_root, npz_scene_name)
         if os.path.exists(scene_path):
             continue
@@ -457,7 +457,7 @@ def generate_scenes(sim,tgt_id, scene_id):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--root",type=Path, default= '/usr/stud/dira/GraspInClutter/targo/data_scenes/acronym/acronym-slight-occlusion-1000')
+    parser.add_argument("--root",type=Path, default= 'data_scenes/acronym/acronym-slight-occlusion-1000')
     parser.add_argument("--scene", type=str, choices=["pile", "packed"], default="packed")
     parser.add_argument("--object-set", type=str, default="packed/train")
     parser.add_argument("--num-grasps", type=int, default=10000)

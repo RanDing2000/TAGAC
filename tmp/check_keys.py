@@ -2,7 +2,7 @@ import numpy as np
 from pathlib import Path
 
 # Check a sample scene file to see what keys are available
-dataset_path = Path('/storage/user/dira/nips_data_version6/combined/targo_dataset')
+dataset_path = Path('/home/ran.ding/projects/TARGO/data/nips_data_version6/combined/targo_dataset')
 scenes_path = dataset_path / 'scenes'
 
 # Find scene files

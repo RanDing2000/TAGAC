@@ -2,10 +2,13 @@ import torch
 import torch.distributions as dist
 from torch import nn
 import os
+import sys
+sys.path.append('/home/ran.ding/projects/TARGO')
+
 from src.vgn.ConvONets.encoder import encoder_dict
 from src.vgn.ConvONets.conv_onet import models, training
 from src.vgn.ConvONets.conv_onet import generation
-from src.vgn.ConvONets import data
+# from src.vgn.ConvONets import data  # Commented out as data module doesn't exist
 from src.vgn.ConvONets.common import decide_total_volume_range, update_reso
 # Conditional import - only import TransformerFusionModel when needed (not for targo_ptv3/ptv3_scene)
 # TransformerFusionModel will be imported inside get_model_targo function
@@ -459,6 +462,8 @@ def get_model_ptv3_clip(cfg, device=None, dataset=None):
     decoders = [decoder_qual, decoder_rot, decoder_width]
 
     # Import PointTransformerV3CLIPModel only when needed (for ptv3_clip model)
+    from sys import path
+    path.append('/home/ran.ding/projects/TARGO')
     from src.transformer.ptv3_clip_model import PointTransformerV3CLIPModel
     encoder_in = PointTransformerV3CLIPModel()
     
