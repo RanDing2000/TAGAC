@@ -2512,6 +2512,7 @@ def compute_multi_object_completion_metrics(gt_meshes, pred_meshes, num_samples=
             'iou_std': 0.0,
             'per_object_cds': [],
             'per_object_ious': [],
+            'per_object_b_ious': [],
             'scene_iou': 0.0
         }
     
@@ -2522,11 +2523,13 @@ def compute_multi_object_completion_metrics(gt_meshes, pred_meshes, num_samples=
     print("Step 4: Computing per-object metrics...")
     per_object_cds = []
     per_object_ious = []
+    per_object_b_ious = []
     
     # For each predicted object, find best matching GT object and compute metrics
     for i, pred_mesh in enumerate(aligned_pred_meshes):
         best_cd = float('inf')
         best_iou = 0.0
+        best_b_iou = 0.0
         best_gt_idx = -1
         
         for j, gt_mesh in enumerate(gt_meshes):
@@ -2550,10 +2553,12 @@ def compute_multi_object_completion_metrics(gt_meshes, pred_meshes, num_samples=
         if best_gt_idx >= 0:
             per_object_cds.append(best_cd)
             per_object_ious.append(best_iou)
-            print(f"Pred object {i} matched with GT object {best_gt_idx}: CD={best_cd:.6f}, IoU={best_iou:.6f}")
+            per_object_b_ious.append(best_b_iou)
+            print(f"Pred object {i} matched with GT object {best_gt_idx}: CD={best_cd:.6f}, IoU={best_iou:.6f}, B-IoU={best_b_iou:.6f}")
         else:
             per_object_cds.append(float('inf'))
             per_object_ious.append(0.0)
+            per_object_b_ious.append(0.0)
             print(f"No match found for pred object {i}")
     
     # Compute scene-level metrics
@@ -2576,6 +2581,7 @@ def compute_multi_object_completion_metrics(gt_meshes, pred_meshes, num_samples=
         'iou_std': float(scene_iou_std),
         'per_object_cds': per_object_cds,
         'per_object_ious': per_object_ious,
+        'per_object_b_ious': per_object_b_ious,
         'scene_iou': float(scene_iou)
     }
     
@@ -2801,7 +2807,7 @@ def mesh_to_tsdf_messy_kitchen(mesh, size=0.7, resolution=40):
 
 
 def compute_chamfer_and_iou_messy_kitchen(target_mesh, completed_mesh):
-    """Compute Chamfer distance and IoU between target mesh and completed mesh for messy kitchen scenarios.
+    """Compute Chamfer distance, IoU, and B-IoU between target mesh and completed mesh for messy kitchen scenarios.
     
     This function directly uses the input meshes without any normalization.
     
@@ -2810,7 +2816,7 @@ def compute_chamfer_and_iou_messy_kitchen(target_mesh, completed_mesh):
         completed_mesh (trimesh.Trimesh): Completed mesh
         
     Returns:
-        tuple: (chamfer_distance, iou)
+        tuple: (chamfer_distance, iou, b_iou)
     """
     # Sample points from mesh surfaces for Chamfer distance
     gt_points, _ = trimesh.sample.sample_surface(target_mesh, 2048)
@@ -2826,6 +2832,7 @@ def compute_chamfer_and_iou_messy_kitchen(target_mesh, completed_mesh):
         normals_tgt=None
     )
     chamfer_distance = eval_dict['chamfer-L1']
+    fscore = eval_dict['f-score']
     
     # Sample points for IoU calculation
     points_iou, occ_target = sample_iou_points(
@@ -2847,7 +2854,10 @@ def compute_chamfer_and_iou_messy_kitchen(target_mesh, completed_mesh):
     )
     iou = metrics['iou']
     
-    return chamfer_distance, iou
+    # Compute B-IoU
+    b_iou = compute_bounding_box_iou(target_mesh, completed_mesh)
+    
+    return chamfer_distance, iou, b_iou, fscore
 
 
 def compute_multi_object_completion_metrics_messy_kitchen(gt_meshes, pred_meshes, num_samples=10000):
@@ -2876,6 +2886,8 @@ def compute_multi_object_completion_metrics_messy_kitchen(gt_meshes, pred_meshes
             'iou_std': 0.0,
             'per_object_cds': [],
             'per_object_ious': [],
+            'per_object_b_ious': [],
+            'per_object_fscores': [],
             'scene_iou': 0.0
         }
     
@@ -2886,17 +2898,21 @@ def compute_multi_object_completion_metrics_messy_kitchen(gt_meshes, pred_meshes
     print("Step 4: Computing per-object metrics for messy kitchen scenario...")
     per_object_cds = []
     per_object_ious = []
+    per_object_b_ious = []
+    per_object_fscores = []
     
     # For each predicted object, find best matching GT object and compute metrics
     for i, pred_mesh in enumerate(aligned_pred_meshes):
         best_cd = float('inf')
         best_iou = 0.0
+        best_b_iou = 0.0
+        best_fscore = 0.0
         best_gt_idx = -1
         
         for j, gt_mesh in enumerate(gt_meshes):
             try:
                 # Use the messy kitchen specific compute_chamfer_and_iou function
-                cd, iou = compute_chamfer_and_iou_messy_kitchen(gt_mesh, pred_mesh)
+                cd, iou, b_iou, fscore = compute_chamfer_and_iou_messy_kitchen(gt_mesh, pred_mesh)
                 
                 # Optional: Save meshes for debugging
                 # gt_mesh.export(f"gt_{j}.ply", include_attributes=False)
@@ -2905,6 +2921,8 @@ def compute_multi_object_completion_metrics_messy_kitchen(gt_meshes, pred_meshes
                 if cd < best_cd:
                     best_cd = cd
                     best_iou = iou
+                    best_b_iou = b_iou
+                    best_fscore = fscore
                     best_gt_idx = j
                     
             except Exception as e:
@@ -2914,23 +2932,35 @@ def compute_multi_object_completion_metrics_messy_kitchen(gt_meshes, pred_meshes
         if best_gt_idx >= 0:
             per_object_cds.append(best_cd)
             per_object_ious.append(best_iou)
-            print(f"Pred object {i} matched with GT object {best_gt_idx}: CD={best_cd:.6f}, IoU={best_iou:.6f}")
+            per_object_b_ious.append(best_b_iou)
+            per_object_fscores.append(best_fscore)
+            print(f"Pred object {i} matched with GT object {best_gt_idx}: CD={best_cd:.6f}, IoU={best_iou:.6f}, B-IoU={best_b_iou:.6f}, F-score={best_fscore:.6f}")
         else:
             per_object_cds.append(float('inf'))
             per_object_ious.append(0.0)
+            per_object_b_ious.append(0.0)
+            per_object_fscores.append(0.0)
             print(f"No match found for pred object {i}")
     
     # Compute scene-level metrics
     if per_object_cds:
         scene_cd = np.mean(per_object_cds)
         scene_iou = np.mean(per_object_ious)
+        scene_b_iou = np.mean(per_object_b_ious)
+        scene_fscore = np.mean(per_object_fscores)
         scene_cd_std = np.std(per_object_cds)
         scene_iou_std = np.std(per_object_ious)
+        scene_b_iou_std = np.std(per_object_b_ious)
+        scene_fscore_std = np.std(per_object_fscores)
     else:
         scene_cd = float('inf')
         scene_iou = 0.0
+        scene_b_iou = 0.0
+        scene_fscore = 0.0
         scene_cd_std = 0.0
         scene_iou_std = 0.0
+        scene_b_iou_std = 0.0
+        scene_fscore_std = 0.0
     
     # Create metrics dictionary
     metrics = {
@@ -2940,6 +2970,8 @@ def compute_multi_object_completion_metrics_messy_kitchen(gt_meshes, pred_meshes
         'iou_std': float(scene_iou_std),
         'per_object_cds': per_object_cds,
         'per_object_ious': per_object_ious,
+        'per_object_b_ious': per_object_b_ious,
+        'per_object_fscores': per_object_fscores,
         'scene_iou': float(scene_iou)
     }
     
@@ -2958,11 +2990,133 @@ def compute_multi_object_completion_metrics_messy_kitchen(gt_meshes, pred_meshes
         metrics['aligned_gt_merged'] = gt_meshes[0] if gt_meshes else None
     
     if len(aligned_pred_meshes) > 1:
-        metrics['aligned_pred_merged'] = trimesh.util.concatenate(aligned_pred_meshes)
+        metrics['aligned_pred_merged'] = aligned_pred_meshes[0] if aligned_pred_meshes else None
     else:
         metrics['aligned_pred_merged'] = aligned_pred_meshes[0] if aligned_pred_meshes else None
     
+    # Calculate B-IoU and F-score statistics
+    if per_object_b_ious:
+        scene_b_iou = np.mean(per_object_b_ious)
+        scene_b_iou_std = np.std(per_object_b_ious)
+    else:
+        scene_b_iou = 0.0
+        scene_b_iou_std = 0.0
+    
+    if per_object_fscores:
+        scene_fscore = np.mean(per_object_fscores)
+        scene_fscore_std = np.std(per_object_fscores)
+    else:
+        scene_fscore = 0.0
+        scene_fscore_std = 0.0
+    
+    # Add B-IoU and F-score to metrics dictionary
+    metrics['b_iou'] = float(scene_b_iou)
+    metrics['b_iou_std'] = float(scene_b_iou_std)
+    metrics['f_score'] = float(scene_fscore)
+    metrics['f_score_std'] = float(scene_fscore_std)
+    
     print(f"Final scene metrics (messy kitchen): CD={metrics['chamfer_distance']:.6f}±{metrics['chamfer_distance_std']:.6f}, "
-          f"IoU={metrics['iou']:.6f}±{metrics['iou_std']:.6f}")
+          f"IoU={metrics['iou']:.6f}±{metrics['iou_std']:.6f}, B-IoU={metrics['b_iou']:.6f}±{metrics['b_iou_std']:.6f}, "
+          f"F-score={metrics['f_score']:.6f}±{metrics['f_score_std']:.6f}")
     
     return metrics
+
+def compute_bounding_box_iou(mesh1, mesh2):
+    """
+    Compute Bounding-box IoU (B-IoU) between two meshes.
+    
+    B-IoU measures the overlap between the bounding boxes of two meshes,
+    which is useful for evaluating spatial alignment and coverage.
+    
+    Args:
+        mesh1 (trimesh.Trimesh): First mesh
+        mesh2 (trimesh.Trimesh): Second mesh
+        
+    Returns:
+        float: Bounding-box IoU value between 0 and 1
+    """
+    try:
+        # Get bounding boxes of both meshes
+        bbox1 = mesh1.bounds  # Shape: (2, 3) - (min_coords, max_coords)
+        bbox2 = mesh2.bounds
+        
+        # Calculate intersection bounds
+        intersection_min = np.maximum(bbox1[0], bbox2[0])
+        intersection_max = np.minimum(bbox1[1], bbox2[1])
+        
+        # Check if there's an intersection
+        if np.any(intersection_min > intersection_max):
+            return 0.0
+        
+        # Calculate intersection volume
+        intersection_dims = intersection_max - intersection_min
+        intersection_volume = np.prod(intersection_dims)
+        
+        # Calculate individual volumes
+        bbox1_dims = bbox1[1] - bbox1[0]
+        bbox2_dims = bbox2[1] - bbox2[0]
+        bbox1_volume = np.prod(bbox1_dims)
+        bbox2_volume = np.prod(bbox2_dims)
+        
+        # Calculate union volume
+        union_volume = bbox1_volume + bbox2_volume - intersection_volume
+        
+        # Calculate B-IoU
+        b_iou = intersection_volume / union_volume if union_volume > 0 else 0.0
+        
+        return float(b_iou)
+        
+    except Exception as e:
+        print(f"Error computing B-IoU: {e}")
+        return 0.0
+
+
+# def compute_chamfer_and_iou_messy_kitchen(target_mesh, completed_mesh):
+#     """Compute Chamfer distance and IoU between target mesh and completed mesh for messy kitchen scenarios.
+    
+#     This function directly uses the input meshes without any normalization.
+    
+#     Args:
+#         target_mesh (trimesh.Trimesh): Ground truth target mesh
+#         completed_mesh (trimesh.Trimesh): Completed mesh
+        
+#     Returns:
+#         tuple: (chamfer_distance, iou)
+#     """
+#     # Sample points from mesh surfaces for Chamfer distance
+#     gt_points, _ = trimesh.sample.sample_surface(target_mesh, 2048)
+#     completed_points, _ = trimesh.sample.sample_surface(completed_mesh, 2048)
+    
+#     evaluator = MeshEvaluator(n_points=2048)
+    
+#     # Compute Chamfer distance
+#     eval_dict = evaluator.eval_pointcloud(
+#         pointcloud=completed_points,
+#         pointcloud_tgt=gt_points,
+#         normals=None,
+#         normals_tgt=None
+#     )
+#     chamfer_distance = eval_dict['chamfer-L1']
+#     # fscore = eval_dict['fscore']
+    
+#     # Sample points for IoU calculation
+#     points_iou, occ_target = sample_iou_points(
+#         mesh_list=[target_mesh],
+#         bounds=target_mesh.bounds,
+#         num_point=100000,
+#         uniform=False,
+#         size=1.0
+#     )
+    
+#     # Compute IoU
+#     metrics = evaluator.eval_mesh(
+#         mesh=completed_mesh,
+#         pointcloud_tgt=gt_points,
+#         normals_tgt=None,
+#         points_iou=points_iou,
+#         occ_tgt=occ_target,
+#         remove_wall=False
+#     )
+#     iou = metrics['iou']
+    
+#     return chamfer_distance, iou
