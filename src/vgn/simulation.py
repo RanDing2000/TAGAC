@@ -94,6 +94,36 @@ class YCBPathsLoader:
         )
     
 
+def sim_select_vgn_scene(sim, indices):
+    # urdf_root = sim.urdf_root
+    scene = sim.scene
+    object_set = sim.object_set
+    # size = sim.size
+    # sim_selected = ClutterRemovalSim(urdf_root, size,scene, object_set, gui=False)  ## create a new sim
+    sim_selected = ClutterRemovalSim(scene, object_set, False)
+    sim.urdf_root = Path("data/urdfs")
+    # sim_selected = ClutterRemovalSim(sim.urdf_root, sim.size, sim.scene, sim.object_set, gui=sim.gui)  ## create a new sim
+    
+    # set some attributes
+    # sim_selected.gui = False
+    sim_selected.add_noise = sim.add_noise
+    sim_selected.sideview = sim.sideview
+    sim_selected.size = sim.size
+    # sim_selected.intrinsic = sim.intrinsic
+    intrinsics = CameraIntrinsic(640, 480, 540.0, 540.0, 320.0, 240.0)
+    sim_selected.camera = sim_selected.world.add_camera(intrinsics, 0.1, 2.0)
+    
+    # mesh_pose_list = collect_mesh_pose_list(sim) 
+    mesh_pose_dict = collect_mesh_pose_dict(sim)
+    for idc in indices:
+        pose = Transform.from_matrix(mesh_pose_dict[idc][2])
+        if idc == 0:
+            mesh_path = mesh_pose_dict[idc][0].replace(".obj",".urdf")
+        else:
+            mesh_path = find_urdf(mesh_pose_dict[idc][0].replace("_visual.obj",".urdf"))
+        sim_selected.world.load_urdf(mesh_path, pose, mesh_pose_dict[idc][1][0])
+    return sim_selected
+
 # Simple function to get a single-scene simulator
 def sim_select_scene(sim, indices):
     """
@@ -221,7 +251,7 @@ class ClutterRemovalSim(object):
         self.object_urdfs_g1b = [f for f in self.egad_root.iterdir() if f.name.endswith(".urdf")]
         self.object_urdfs_egad = [f for f in self.egad_root.iterdir() if f.name.endswith(".urdf")]
         self.object_urdfs_acroym = [f for f in self.acroym_root.iterdir() if f.name.endswith(".urdf")]
-        self.object_urdfs_gso = [f for f in self.gso_root.iterdir() if f.name.endswith(".urdf")]
+        # self.object_urdfs_gso = [f for f in self.gso_root.iterdir() if f.name.endswith(".urdf")]
 
     def load_clip_model(self):
         """
@@ -1176,6 +1206,7 @@ class ClutterRemovalSim(object):
         curr_scene_path=None,
         target_id=None,
         resolution=40,
+        is_vgn=False,
         model="vgn",
         curr_mesh_pose_list=None,
     ):
@@ -1219,7 +1250,11 @@ class ClutterRemovalSim(object):
             if not self.save_occ_level_dict:
                 occ_level = self.occ_level_dict[curr_mesh_pose_list]
             else:
-                sim_single = sim_select_scene(self, [0, target_id])
+                # if model == "targo" :
+                if is_vgn:
+                    sim_single = sim_select_vgn_scene(self, [0, target_id])
+                else:
+                    sim_single = sim_select_scene(self, [0, target_id])
                 _, seg_img_single = sim_single.camera.render_with_seg(extrinsic)[1:3]
                 occ_level = 1 - np.sum(seg_img == target_id) / np.sum(seg_img_single == 1)
                 self.occ_level_dict[curr_mesh_pose_list] = occ_level

@@ -11,8 +11,8 @@ import sys
 # sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.append('/home/ran.ding/projects/TARGO')
 
-# Grasp planner modules - 专门使用PTV3SceneImplicit
-from src.vgn.detection_ptv3_implicit import PTV3SceneGTImplicit
+# Grasp planner modules - 专门使用VGNImplicit
+from src.vgn.detection_implicit_vgn import VGNImplicit
 
 # Only keep target_sample_offline
 from src.vgn.experiments import target_sample_offline_vgn
@@ -37,10 +37,10 @@ def str2bool(v):
 
 def create_and_write_args_to_result_path(args):
     """
-    Create a result directory for ptv3_scene model results.
+    Create a result directory for targo model results.
     Then write the command-line arguments to a text file in that directory.
     """
-    model_name = 'ptv3_scene_gt'
+    model_name = 'targo'
     result_directory = f'{args.result_root}/{model_name}'
     if not os.path.exists(result_directory):
         os.makedirs(result_directory)
@@ -69,29 +69,29 @@ def create_and_write_args_to_result_path(args):
 
 def main(args):
     """
-    Main entry point: creates the PTV3SceneImplicit grasp planner, then runs target_sample_offline.
+    Main entry point: creates the VGNImplicit grasp planner, then runs target_sample_offline.
     """
     print("=" * 60)
-    print("PTV3 SCENE INFERENCE CONFIGURATION")
+    print("TARGO INFERENCE CONFIGURATION")
     print("=" * 60)
-    print(f"Model type: ptv3_scene (fixed)")
+    print(f"Model type: targo (fixed)")
     print(f"Model path: {args.model}")
-    # print(f"Occlusion level: {args.occlusion_level}")
+    print(f"Occlusion level: {args.occlusion_level}")
     print(f"Test root: {args.test_root}")
     print(f"Shape completion: {args.shape_completion}")
     if args.shape_completion:
         print(f"SC model path: {args.sc_model_path}")
-    print(f"Hunyuan3D enabled: {args.hunyuan3D_ptv3}")
-    if args.hunyuan3D_ptv3:
+    print(f"Hunyuan3D enabled: {args.hunyuan3D}")
+    if args.hunyuan3D:
         print(f"Hunyuan3D path: {args.hunyuan3D_path}")
     else:
         print("Using complete geometry objects")
     print("=" * 60)
     
-    # Create PTV3SceneImplicit grasp planner (专门为ptv3_scene设计)
-    grasp_planner = PTV3SceneGTImplicit(
+    # Create VGNImplicit grasp planner (专门为targo设计)
+    grasp_planner = VGNImplicit(
         args.model,
-        'ptv3_scene_gt',  # 固定使用ptv3_scene
+        'targo',  # 固定使用targo
         best=args.best,
         qual_th=args.qual_th,
         force_detection=args.force,
@@ -105,11 +105,10 @@ def main(args):
     result_path = create_and_write_args_to_result_path(args)
     args.result_path = result_path
     
-    # print(f"\nStarting PTV3 Scene inference on {args.occlusion_level} occlusion vgn dataset...")
+    print(f"\nStarting TARGO inference on {args.occlusion_level} occlusion vgn dataset...")
     print(f"Result path: {result_path}")
     
     # Run target_sample_offline evaluation (与训练脚本保持一致的调用方式)
-
     occ_level_sr = target_sample_offline_vgn.run(
         grasp_plan_fn=grasp_planner,
         logdir=args.logdir,
@@ -121,13 +120,10 @@ def main(args):
         add_noise=None,
         sideview=args.sideview,
         visualize=args.vis,
-        type='ptv3_scene_gt',  # 确保类型一致
+        type='targo',  # 确保类型一致
         test_root=args.test_root,
         occ_level_dict_path=args.occ_level_dict,
-        hunyun2_path=args.hunyun2_path,
-        hunyuan3D_ptv3=args.hunyuan3D_ptv3,
-        hunyuan3D_path=args.hunyuan3D_path,
-        model_type='ptv3_scene_gt',  # 确保模型类型一致
+        model_type='targo',  # 确保模型类型一致
         video_recording=args.video_recording,
         target_file_path=args.target_file,
         max_scenes=args.max_scenes if hasattr(args, 'max_scenes') else 0,  # 支持限制场景数量
@@ -156,27 +152,27 @@ def main(args):
         print("====== Category analysis completed ======\n")
     
     print("=" * 60)
-    print("PTV3 SCENE INFERENCE COMPLETED")
+    print("TARGO INFERENCE COMPLETED")
     print("=" * 60)
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="PTV3 Scene Inference on vgn Dataset")
+    parser = argparse.ArgumentParser(description="TARGO Inference on vgn Dataset")
 
-    # Model configuration (simplified for ptv3_scene only)
-    parser.add_argument("--model", type=Path, default='/home/ran.ding/projects/TARGO/checkpoints/ptv3_scene.pt',
-                        help="Path to the ptv3_scene model checkpoint")
-    parser.add_argument("--shape_completion", type=str2bool, default=False,
+    # Model configuration (simplified for targo only)
+    parser.add_argument("--model", type=Path, default='checkpoints/targonet.pt',
+                        help="Path to the targo model checkpoint")
+    parser.add_argument("--shape_completion", type=str2bool, default=True,
                         help="Whether to use shape completion during inference")
-    parser.add_argument("--sc_model_path", type=str, default=None,
+    parser.add_argument("--sc_model_path", type=str, default='checkpoints/adapointr.pth',
                         help="Path to shape completion model (if shape_completion=True)")
     
     # Dataset configuration
-    # parser.add_argument("--occlusion-level", type=str, choices=["no", "slight", "medium"], default="no",
-    #                     help="Occlusion level for the experiment: no, slight or medium.")
-    parser.add_argument("--test_root", type=str, default='/home/ran.ding/projects/TARGO/data/nips_data_version6/test_set_gaussian_0.002',
+    parser.add_argument("--occlusion-level", type=str, choices=["no", "slight", "medium"], default="no",
+                        help="Occlusion level for the experiment: no, slight or medium.")
+    parser.add_argument("--test_root", type=str, default='data/nips_data_version6/test_set_gaussian_0.002',
                         help="Root directory of test dataset")
-    parser.add_argument("--occ_level_dict", type=str, default='/home/ran.ding/projects/TARGO/data/nips_data_version6/test_set_gaussian_0.002/occ_level_dict.json',
+    parser.add_argument("--occ_level_dict", type=str, default='data/nips_data_version6/test_set_gaussian_0.002/occ_level_dict.json',
                         help="Path to occlusion level dictionary JSON file")
     
     # Inference parameters
@@ -201,10 +197,10 @@ if __name__ == "__main__":
     parser.add_argument("--result_root", type=Path, default=None,
                         help="Root directory for saving results")
 
-    # args.result_root = 'targo_eval_results/ycb/eval_results_ptv3_clip-no-occlusion'
+    # args.result_root = 'targo_eval_results/ycb/eval_results_targo-no-occlusion'
     parser.add_argument("--logdir", type=Path, default=None,
                         help="Directory for storing logs or intermediate results.")
-    parser.add_argument("--description", type=str, default="ptv3_scene_inference",
+    parser.add_argument("--description", type=str, default="targo_inference",
                         help="Experiment description.")
     
     # Visualization and debugging
@@ -219,21 +215,21 @@ if __name__ == "__main__":
     
     # Legacy parameters (kept for compatibility but not used)
     parser.add_argument("--hunyun2_path", type=str, default=None,
-                        help="Path to hunyun2 model (not used for ptv3_scene but kept for compatibility).")
+                        help="Path to hunyun2 model (not used for targo but kept for compatibility).")
     
     # Hunyuan3D support
-    parser.add_argument("--hunyuan3D_ptv3", type=str2bool, default=True,
+    parser.add_argument("--hunyuan3D", type=str2bool, default=True,
                         help="If True, use Hunyuan3D reconstructed objects; if False, use complete geometry objects")
     parser.add_argument("--hunyuan3D_path", type=str, default=None,
                         help="Path to Hunyuan3D reconstructed objects directory")
     
     args = parser.parse_args()
-    args.result_root = 'targo_eval_results/vgn/eval_results/ptv3_scene_gt'
+    args.result_root = 'targo_eval_results/vgn/eval_results/targo'
 
     # Validate model file exists
     if not args.model.exists():
         print(f"ERROR: Model file not found: {args.model}")
-        print("Please provide a valid path to ptv3_scene model checkpoint")
+        print("Please provide a valid path to targo model checkpoint")
         exit(1)
     
     # Validate shape completion configuration
@@ -248,7 +244,7 @@ if __name__ == "__main__":
 
    #  Set default logdir if not provided
     if args.logdir is None:
-            args.logdir = Path('targo_eval_results/vgn/eval_results/ptv3_scene_gt')
+            args.logdir = Path('targo_eval_results/vgn/eval_results/targo')
 
-    print("Starting PTV3 Scene inference...")
+    print("Starting TARGO inference...")
     main(args)
