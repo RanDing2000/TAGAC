@@ -267,7 +267,7 @@ def run(
                         type=model_type,
                         timings=timings
                     )
-        elif model_type in ['targo', 'targo_full_targ', 'targo_hunyun2', 'targo_ptv3']:
+        elif model_type in ['targo', 'targo_full_targ', 'targo_hunyun2', 'targo_ptv3', 'targo_partial', 'targo_full_gt']:
             # TARGO specific data acquisition
             curr_processed_scene_targo_path = f'{processed_scenes_targo_path}/{scene_name}.npz'
             
@@ -354,7 +354,8 @@ def run(
             grasps, scores = select(qual_vol.copy(), center_vol, rot_vol, width_vol, threshold=0.9, force_detection=True, max_filter_size=4)
             
             timings["planning"] = 0.0  # VGN doesn't have separate planning time
-        elif model_type in ['targo', 'targo_full_targ', 'targo_hunyun2', 'targo_ptv3']:
+            
+        elif model_type in ['targo', 'targo_full_targ', 'targo_hunyun2', 'targo_ptv3', 'targo_partial', 'targo_full_gt']:
             
             grasps, scores, timings["planning"] = grasp_plan_fn(
                 state, scene_mesh, 

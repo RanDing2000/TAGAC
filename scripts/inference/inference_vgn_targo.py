@@ -74,13 +74,19 @@ def main(args):
     print("=" * 60)
     print("TARGO INFERENCE CONFIGURATION")
     print("=" * 60)
-    print(f"Model type: targo (fixed)")
+    print(f"Model type: {args.model_type}")
     print(f"Model path: {args.model}")
     print(f"Occlusion level: {args.occlusion_level}")
     print(f"Test root: {args.test_root}")
-    print(f"Shape completion: {args.shape_completion}")
-    if args.shape_completion:
+    
+    # Shape completion logic based on model type
+    use_shape_completion = args.shape_completion and args.model_type == "targo"
+    print(f"Shape completion: {use_shape_completion}")
+    if use_shape_completion:
         print(f"SC model path: {args.sc_model_path}")
+    elif args.model_type in ["targo_partial", "targo_full_gt"]:
+        print("Shape completion disabled for this model type")
+        
     print(f"Hunyuan3D enabled: {args.hunyuan3D}")
     if args.hunyuan3D:
         print(f"Hunyuan3D path: {args.hunyuan3D_path}")
@@ -88,17 +94,17 @@ def main(args):
         print("Using complete geometry objects")
     print("=" * 60)
     
-    # Create VGNImplicit grasp planner (专门为targo设计)
+    # Create VGNImplicit grasp planner
     grasp_planner = VGNImplicit(
         args.model,
-        'targo',  # 固定使用targo
+        args.model_type,  # 使用指定的模型类型
         best=args.best,
         qual_th=args.qual_th,
         force_detection=args.force,
         out_th=args.out_th,
         select_top=False,
         visualize=args.vis,
-        sc_model_path=args.sc_model_path if args.shape_completion else None,
+        sc_model_path=args.sc_model_path if use_shape_completion else None,
         cd_iou_measure=True,
     )
     
@@ -120,10 +126,11 @@ def main(args):
         add_noise=None,
         sideview=args.sideview,
         visualize=args.vis,
-        type='targo',  # 确保类型一致
+        # type='targo',  # 确保类型一致
+        type = args.model_type,
         test_root=args.test_root,
         occ_level_dict_path=args.occ_level_dict,
-        model_type='targo',  # 确保模型类型一致
+        model_type=args.model_type,  # 使用指定的模型类型
         video_recording=args.video_recording,
         target_file_path=args.target_file,
         max_scenes=args.max_scenes if hasattr(args, 'max_scenes') else 0,  # 支持限制场景数量
@@ -163,6 +170,8 @@ if __name__ == "__main__":
     # Model configuration (simplified for targo only)
     parser.add_argument("--model", type=Path, default='checkpoints/targonet.pt',
                         help="Path to the targo model checkpoint")
+    parser.add_argument("--model_type", type=str, choices=["targo", "targo_partial", "targo_full_gt"], default="targo_partial",
+                        help="Model type: targo (with shape completion), targo_partial (partial input), targo_full_gt (ground truth complete target)")
     parser.add_argument("--shape_completion", type=str2bool, default=True,
                         help="Whether to use shape completion during inference")
     parser.add_argument("--sc_model_path", type=str, default='checkpoints/adapointr.pth',
@@ -177,7 +186,7 @@ if __name__ == "__main__":
                         help="Path to occlusion level dictionary JSON file")
     
     # Inference parameters
-    parser.add_argument("--out_th", type=float, default=0.2,
+    parser.add_argument("--out_th", type=float, default=0.15,
                         help="Output threshold for valid grasps.")
     parser.add_argument("--qual-th", type=float, default=0.9,
                         help="Quality threshold for valid grasps.")
@@ -234,14 +243,19 @@ if __name__ == "__main__":
         exit(1)
     
     # Validate shape completion configuration
-    if args.shape_completion and args.sc_model_path is None:
-        print("ERROR: shape_completion=True but sc_model_path not provided")
+    if args.model_type == "targo" and args.shape_completion and args.sc_model_path is None:
+        print("ERROR: shape_completion=True but sc_model_path not provided for targo model")
         print("Please provide --sc_model_path when using shape completion")
         exit(1)
     
-    if args.shape_completion and args.sc_model_path and not os.path.exists(args.sc_model_path):
+    if args.model_type == "targo" and args.shape_completion and args.sc_model_path and not os.path.exists(args.sc_model_path):
         print(f"ERROR: Shape completion model not found: {args.sc_model_path}")
         exit(1)
+    
+    # For targo_partial and targo_full_gt, shape completion is not used
+    if args.model_type in ["targo_partial", "targo_full_gt"]:
+        args.shape_completion = False
+        print(f"Shape completion automatically disabled for {args.model_type} model type")
 
    #  Set default logdir if not provided
     if args.logdir is None:

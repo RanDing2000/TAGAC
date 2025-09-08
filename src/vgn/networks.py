@@ -15,6 +15,8 @@ def get_network(name):
         "targo":TARGONet,
         "targo_full_targ": TARGONet,
         "targo_hunyun2": TARGONet,
+        "targo_partial": TARGONet,
+        "targo_full_gt": TARGONet,
         "targo_ptv3": TARGOPtv3Net,
         "ptv3_scene": Ptv3SceneNet,
         "ptv3_clip": Ptv3ClipNet,
