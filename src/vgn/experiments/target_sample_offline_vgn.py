@@ -123,6 +123,7 @@ def run(
     target_file_path=None,  
     data_type='ycb',
     max_scenes=0,  # Add parameter to limit number of scenes (0 means no limit)
+    sc_net=None,  # Shape completion network
 ):
     # Initialize the simulation
     sim = ClutterRemovalSim(
@@ -131,7 +132,8 @@ def run(
         add_noise=add_noise,
         sideview=sideview,
         test_root=test_root,
-        egl_mode=False
+        egl_mode=False,
+        sc_net=sc_net
     )
     logger = Logger(logdir, description, tgt_sample=True)
 
@@ -279,7 +281,6 @@ def run(
             if scene_no_targ_pc is None:
                 print(f"Failed to generate TARGO data for scene {scene_name}, skipping")
                 continue
-
             tsdf = tsdf_targ
                 
             # Create a dummy TSDF for compatibility
@@ -354,8 +355,8 @@ def run(
             
             timings["planning"] = 0.0  # VGN doesn't have separate planning time
         elif model_type in ['targo', 'targo_full_targ', 'targo_hunyun2', 'targo_ptv3']:
-            # TARGO planning
-            grasps, scores, timings["planning"], cd, iou = grasp_plan_fn(
+            
+            grasps, scores, timings["planning"] = grasp_plan_fn(
                 state, scene_mesh, 
                 scene_name=scene_name, 
                 cd_iou_measure=True, 
@@ -831,63 +832,51 @@ def generate_targo_input_data(sim, path_to_npz, tgt_id, scene_name, processed_sc
             np.asarray(pc_scene.points, dtype=np.float32)
         )
         
-        # Depth to point cloud conversions (following generate_scenes_targo_from_mesh_pose.py)
-        # pc_scene_depth_side_c = depth_to_point_cloud(depth_imgs[0], mask_scene[0],
-        #                                              sim.camera.intrinsic.K, extrinsics[0], 2048)
-        # pc_scene_depth_side_c_no_specify = depth_to_point_cloud_no_specify(depth_imgs[0], mask_scene[0],
-        #                                              sim.camera.intrinsic.K, extrinsics[0])
         pc_targ_depth_side_c = depth_to_point_cloud(depth_imgs[0], mask_targ[0],
                                                     sim.camera.intrinsic.K, extrinsics[0], 2048)
 
         pc_targ_depth_side_c = pc_targ_depth_side_c / 0.3 - 0.5
-        # pc_targ_depth_side_c_no_specify = depth_to_point_cloud_no_specify(depth_imgs[0], mask_targ[0],
-        #                                             sim.camera.intrinsic.K, extrinsics[0]) 
-        # pc_scene_no_targ_depth_side_c = remove_A_from_B(pc_targ_depth_side_c, pc_scene_depth_side_c)
         
         # Convert to numpy arrays and normalize
         targ_pc = np.asarray(pc_targ.points, dtype=np.float32)
         targ_pc = targ_pc / 0.3 - 0.5  # Normalize to [-0.5, 0.5]
         scene_no_targ_pc = scene_no_targ_pc / 0.3 - 0.5  # Normalize to [-0.5, 0.5]
         
-        # Generate target grid
+        # Generate target grid using point_cloud_to_tsdf from utils_giga
+        # from src.utils_giga import point_cloud_to_tsdf
+        # try:
+            # Convert targ_pc back to world coordinates for TSDF generation
+        # targ_pc_world = (targ_pc + 0.5) * 0.3  # Convert from [-0.5, 0.5] to world coordinates
+        # Generate TSDF from completed point cloud
+        # targ_grid = point_cloud_to_tsdf(targ_pc_world)
+        # targ_grid = tsdf_targ
+        
+        # print(f"Generated TSDF from completed target point cloud. TSDF shape: {targ_grid.shape}")
+            
+
         from src.vgn.perception import create_tsdf
         tsdf_targ = create_tsdf(sim.size, 40, (depth_imgs * mask_targ).astype(np.float32), sim.camera.intrinsic, extrinsics)
         targ_grid = tsdf_targ.get_grid()
+        print(f"Generated TSDF from completed target point cloud. TSDF shape: {targ_grid.shape}")
+        print("Using fallback TSDF generation method")
         
         occ_level = occ_level_dict.get(scene_name, 0.0)
-        
-        # Save processed data with additional depth point clouds
-        # save_point_cloud_as_ply(pc_targ_depth_side_c,'targ_depth_pc.ply')
-        # save_point_cloud_as_ply(scene_no_targ_pc,'scene_no_targ_pc.ply')
-        # save_point_cloud_as_ply(targ_pc,'targ_pc.ply')
-
         ## [-0.5, 0.5]
         processed_data = {
             'scene_no_targ_pc': scene_no_targ_pc,
-            'targ_pc': targ_pc,
+            'targ_pc': pc_targ_depth_side_c.astype(np.float32),
             'targ_grid': targ_grid,
             'occ_level': occ_level,
             'scene_name': scene_name,
             'tgt_id': tgt_id,
-            # Additional depth point clouds
-            # 'pc_scene_depth_side_c': pc_scene_depth_side_c,
-            # 'pc_scene_depth_side_c_no_specify': pc_scene_depth_side_c_no_specify,
-            # 'pc_targ_depth_side_c': pc_targ_depth_side_c,
-            'targ_depth_pc': pc_targ_depth_side_c.astype(np.float32),
-            # 'tsdf': tsdf_targ,
-            # 'pc_targ_depth_side_c_no_specify': pc_targ_depth_side_c_no_specify,
-            # 'pc_scene_no_targ_depth_side_c': pc_scene_no_targ_depth_side_c,
-            # # Original point clouds from reconstruct_40_pc
-            # 'pc_scene_side_c': np.asarray(pc_scene.points, dtype=np.float32),
-            # 'pc_targ_side_c': np.asarray(pc_targ.points, dtype=np.float32),
-            # 'pc_scene_no_targ_side_c': scene_no_targ_pc
+            # 'targ_depth_pc': pc_targ_depth_side_c.astype(np.float32),
         }
         
         processed_file_path = os.path.join(processed_scenes_targo_path, f'{scene_name}.npz')
         np.savez(processed_file_path, **processed_data)
         print(f"Saved TARGO processed data to {processed_file_path}")
         
-        return scene_no_targ_pc, targ_pc, targ_grid, occ_level, tsdf_targ
+        return scene_no_targ_pc, pc_targ_depth_side_c.astype(np.float32), targ_grid, occ_level, tsdf_targ
         
     except Exception as e:
         print(f"Error generating TARGO input data for scene {scene_name}: {e}")

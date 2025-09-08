@@ -176,6 +176,7 @@ class ClutterRemovalSim(object):
         test_root=None,
         is_acronym=False,
         egl_mode=False,
+        sc_net=None,
     ):
         # Only allow 'pile' or 'packed' scenes now
         assert scene in ["pile", "packed"]
@@ -212,6 +213,7 @@ class ClutterRemovalSim(object):
         self.rng = np.random.RandomState(seed) if seed else np.random
         self.world = btsim.BtWorld(self.gui, save_dir, save_freq, egl_mode)
         self.gripper = Gripper(self.world)
+        self.sc_net = sc_net  # Shape completion network
         if size:
             self.size = size
         else:

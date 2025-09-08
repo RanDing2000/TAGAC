@@ -127,6 +127,7 @@ def main(args):
         video_recording=args.video_recording,
         target_file_path=args.target_file,
         max_scenes=args.max_scenes if hasattr(args, 'max_scenes') else 0,  # 支持限制场景数量
+        sc_net=grasp_planner.sc_net,  # 传递shape completion network
     )
 
     # Save the result to a JSON file
