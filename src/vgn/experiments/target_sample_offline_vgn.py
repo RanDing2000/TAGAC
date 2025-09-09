@@ -165,8 +165,26 @@ def run(
 
     occ_level_dict = json.load(open(occ_level_dict_path))
     
-    # Loop over the test set
-    for num_id, curr_mesh_pose_list in enumerate(os.listdir(test_mesh_pose_list)):
+    # Get all scene files and randomly select subset if max_scenes is specified
+    all_scene_files = os.listdir(test_mesh_pose_list)
+    if max_scenes > 0 and len(all_scene_files) > max_scenes:
+        import random
+        random.seed(42)  # Set seed for reproducibility
+        selected_scene_files = random.sample(all_scene_files, max_scenes)
+        print(f"=== SCENE SELECTION INFO ===")
+        print(f"Total available scenes: {len(all_scene_files)}")
+        print(f"Randomly selected scenes: {max_scenes}")
+        print(f"Random seed: 42 (for reproducibility)")
+        print(f"First 5 selected scenes: {selected_scene_files[:5]}")
+        print("=" * 30)
+    else:
+        selected_scene_files = all_scene_files
+        print(f"=== SCENE SELECTION INFO ===")
+        print(f"Processing all {len(selected_scene_files)} scenes")
+        print("=" * 30)
+    
+    # Loop over the selected test set
+    for num_id, curr_mesh_pose_list in enumerate(selected_scene_files):
         path_to_npz = os.path.join(test_scenes, curr_mesh_pose_list)
         scene_name = curr_mesh_pose_list[:-4]
         occ_level = occ_level_dict[scene_name]
@@ -539,9 +557,7 @@ def run(
                     f.write(f"{key}:{val}\n")
                 f.write('\n')
 
-        # Check if we've reached the max_scenes limit
-        if max_scenes > 0 and num_id >= max_scenes:
-            break
+        # Note: max_scenes limit is handled by pre-selecting scenes, so no need to break here
 
     # Save target name and label dictionary
     with open(f'{result_path}/targ_name_label.json', 'w') as f:
@@ -550,19 +566,30 @@ def run(
     # Calculate success rate only for non-zero count levels
     non_zero_levels = [level for level in occ_level_count_dict if occ_level_count_dict[level] > 0]
     
-    # Save metrics to meta_evaluations.txt (simplified for VGN)
+    # Create a mapping from scene_name to target_name for better meta_evaluations.txt
+    scene_to_target_mapping = {}
+    for scene_name in count_label_dict.keys():
+        # Extract target name from scene_name if available
+        # This is a simplified extraction - you may need to adjust based on your data
+        if scene_name in targ_name_label:
+            scene_to_target_mapping[scene_name] = scene_name  # Use scene_name as fallback
+    
+    # Save metrics to meta_evaluations.txt
     with open(f'{result_path}/meta_evaluations.txt', 'w') as f:
-        f.write("Scene_ID, Target_Name, Occlusion_Level, Success\n")
-        total_scenes = len(targ_name_label)
+        f.write("Scene_ID, Target_Name, Occlusion_Level, IoU, CD, Success\n")
+        total_scenes = len(count_label_dict)
         success_count = 0
         
-        for scene_name, label in targ_name_label.items():
-            # Extract target name from scene_name (this is a simplified approach)
-            target_name = "unknown"  # VGN doesn't track target names in detail
-            occ_level = offline_occ_level_dict.get(scene_name, 0.0)
+        for scene_name, (label, num_occluders, occ_level) in count_label_dict.items():
+            # Use target name from mapping or scene_name as fallback
+            target_name = scene_to_target_mapping.get(scene_name, scene_name)
             success = int(label != Label.FAILURE)
             
-            f.write(f"{scene_name}, {target_name}, {occ_level:.4f}, {success}\n")
+            # For VGN, we don't have IoU and CD metrics, so use placeholder values
+            iou = 0.0  # Placeholder
+            cd = 0.0   # Placeholder
+            
+            f.write(f"{scene_name}, {target_name}, {occ_level:.4f}, {iou:.6f}, {cd:.6f}, {success}\n")
             
             # Count successful grasps
             if success == 1:
@@ -570,7 +597,9 @@ def run(
         
         if total_scenes > 0:
             success_rate = success_count / total_scenes * 100
-            f.write(f"\nSuccess Rate: {success_rate:.2f}%\n")
+            f.write(f"\nAverage CD: {cd:.6f}\n")
+            f.write(f"Average IoU: {iou:.6f}\n")
+            f.write(f"Success Rate: {success_rate:.2f}%\n")
             f.write(f"Total scenes evaluated: {total_scenes}\n")
             f.write(f"Successful grasps: {success_count}\n")
         else:
