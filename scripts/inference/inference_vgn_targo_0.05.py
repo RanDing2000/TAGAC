@@ -91,29 +91,23 @@ def generate_filtered_result_csv(result_path, model_type):
             line = line.strip()
             if line and not line.startswith('Scene_ID') and not line.startswith('Average') and not line.startswith('Success') and not line.startswith('Total') and not line.startswith('Successful') and line != '':
                 # Parse each line to extract relevant information
-                # New Format: Scene_ID, Occlusion_Level, Num_Occluders, Length, Width, Height, Success
+                # New Format: Scene_ID, Occlusion_Level, Num_Occluders, Length_Width, Success
                 parts = [p.strip() for p in line.split(',')]
-                if len(parts) >= 7:
+                if len(parts) >= 5:
                     try:
                         scene_id = parts[0]
                         occlusion_level = float(parts[1])
                         num_occluders = int(parts[2])
-                        length = float(parts[3])
-                        width = float(parts[4])
-                        height = float(parts[5])
-                        success = int(parts[6])
+                        length_width = float(parts[3])
+                        success = int(parts[4])
                         
-                        # Calculate length_width as the minimum of length and width (horizontal dimensions)
-                        length_width = min(length, width)
+                        # Now we have real data from meta_evaluations.txt, no need to estimate!
                         
                         results.append({
                             'scene_id': scene_id,
                             'success': success,
                             'occlusion_level': occlusion_level,
                             'length_width': length_width,
-                            'length': length,
-                            'width': width,
-                            'height': height,
                             'num_occluders': num_occluders
                         })
                     except (ValueError, IndexError) as e:
@@ -220,9 +214,6 @@ def generate_filtered_result_csv(result_path, model_type):
             f.write(f"Total Evaluations: {len(results)}\n")
             f.write(f"Overall Success Rate: {df['success'].mean():.4f}\n")
             f.write(f"Average Length/Width: {df['length_width'].mean():.6f}\n")
-            f.write(f"Average Length: {df['length'].mean():.6f}\n")
-            f.write(f"Average Width: {df['width'].mean():.6f}\n")
-            f.write(f"Average Height: {df['height'].mean():.6f}\n")
             f.write(f"Total Bins with Data: {len(filtered_results)}\n")
             f.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
             
@@ -317,8 +308,6 @@ def main(args):
         target_file_path=args.target_file,
         max_scenes=args.max_scenes,  # 处理场景数量限制（0表示处理所有场景）
         sc_net=grasp_planner.sc_net,  # 传递shape completion network
-        vis_failure_only=args.vis_failure_only,  # 可视化失败案例
-        vis_rgb=args.vis_rgb,  # 可视化RGB图像
     )
 
     # Save the result to a JSON file
@@ -356,9 +345,9 @@ if __name__ == "__main__":
     # Dataset configuration
     parser.add_argument("--occlusion-level", type=str, choices=["no", "slight", "medium"], default="no",
                         help="Occlusion level for the experiment: no, slight or medium.")
-    parser.add_argument("--test_root", type=str, default='data/nips_data_version6/test_set_gaussian_0.002',
+    parser.add_argument("--test_root", type=str, default='data/nips_data_version6/test_set_gaussian_0.005',
                         help="Root directory of test dataset")
-    parser.add_argument("--occ_level_dict", type=str, default='data/nips_data_version6/test_set_gaussian_0.002/occ_level_dict.json',
+    parser.add_argument("--occ_level_dict", type=str, default='data/nips_data_version6/test_set_gaussian_0.005/occ_level_dict.json',
                         help="Path to occlusion level dictionary JSON file")
     
     # Inference parameters
@@ -392,12 +381,8 @@ if __name__ == "__main__":
     # Visualization and debugging
     parser.add_argument("--sim-gui", type=str2bool, default=False,
                         help="Whether to enable a simulation GUI.")
-    parser.add_argument("--vis", type=str2bool, default=True,
+    parser.add_argument("--vis", type=str2bool, default=False,
                         help="Whether to visualize and save the affordance map.")
-    parser.add_argument("--vis_failure_only", type=str2bool, default=False,
-                        help="Whether to visualize only failure cases.")
-    parser.add_argument("--vis_rgb", type=str2bool, default=True,
-                        help="Whether to visualize RGB images.")
     parser.add_argument("--video-recording", type=str2bool, default=False,
                         help="Whether to record videos of grasping attempts.")
     parser.add_argument("--target-file", type=str, default='/home/ran.ding/projects/TARGO/example_targets/target_list.txt',
@@ -414,7 +399,7 @@ if __name__ == "__main__":
                         help="Path to Hunyuan3D reconstructed objects directory")
     
     args = parser.parse_args()
-    args.result_root = 'targo_eval_results/vgn/eval_results/targo'
+    args.result_root = 'targo_eval_results/vgn_0.05/eval_results'
 
     # Validate model file exists
     if not args.model.exists():
@@ -439,7 +424,7 @@ if __name__ == "__main__":
 
    #  Set default logdir if not provided
     if args.logdir is None:
-            args.logdir = Path('targo_eval_results/vgn/eval_results/targo')
+            args.logdir = Path('targo_eval_results/vgn_0.05/eval_results')
 
     print("Starting TARGO inference...")
     main(args)

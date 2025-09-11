@@ -13,6 +13,9 @@ import uuid
 import matplotlib.pyplot as plt
 import torch
 from datetime import datetime
+import sys
+sys.path.append('/home/ran.ding/projects/TARGO')
+# sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.vgn import io  # For CSV creation and I/O
 from src.vgn.grasp import *
 from src.vgn.ConvONets.eval import MeshEvaluator
@@ -32,6 +35,7 @@ from src.utils_targo import (
     generate_and_transform_grasp_meshes,
     compute_chamfer_and_iou
 )
+from src.vgn.utils_visualization import visualize_failure_case
 
 skip_list = {
     "013_apple",
@@ -103,6 +107,8 @@ def read_target_names_from_file(target_file_path):
     return target_names
 
 
+
+
 def run(
     grasp_plan_fn,
     logdir,
@@ -124,6 +130,8 @@ def run(
     data_type='ycb',
     max_scenes=0,  # Add parameter to limit number of scenes (0 means no limit)
     sc_net=None,  # Shape completion network
+    vis_failure_only=False,  # Visualize only failure cases
+    vis_rgb=False,  # Visualize RGB images
 ):
     # Initialize the simulation
     sim = ClutterRemovalSim(
@@ -158,7 +166,6 @@ def run(
     visual_failure_count = 0
 
     count_label_dict = {}
-    height_label_dict = {}
     tgt_bbx_label_dict = {}
     skip_dict = {}
     targ_name_label = {}  # Dictionary to store target name and label
@@ -183,6 +190,9 @@ def run(
         print(f"Processing all {len(selected_scene_files)} scenes")
         print("=" * 30)
     
+    # Initialize dictionary to store target meshes for length_width calculation
+    scene_target_mesh_dict = {}
+    
     # Loop over the selected test set
     for num_id, curr_mesh_pose_list in enumerate(selected_scene_files):
         path_to_npz = os.path.join(test_scenes, curr_mesh_pose_list)
@@ -202,6 +212,10 @@ def run(
         # Manually adjust boundaries
         sim.lower = np.array([0.02, 0.02, 0.055])
         sim.upper = np.array([0.28, 0.28, 0.30000000000000004])
+        
+        # Create visual_dict for visualization if needed
+        if visualize:
+            visual_dict = {'mesh_name': scene_name, 'mesh_dir': logger.mesh_dir}
 
         tgt_id = int(scene_name[-1])  
         start_time = time.time()
@@ -212,6 +226,8 @@ def run(
             os.path.join(test_mesh_pose_list, curr_mesh_pose_list),
             allow_pickle=True
         )["pc"]
+
+        occluder_count = len(mp_data.item().keys()) - 1  # Total objects minus plane
 
         # Place objects
         for obj_id, mesh_info in enumerate(mp_data.item().values()):
@@ -251,10 +267,6 @@ def run(
                 target_mesh_gt = tri_mesh
 
         end_time = time.time()
-        if len(occluder_heights) == 0:
-            relative_height = tgt_height
-        else:
-            relative_height = tgt_height - np.max(occluder_heights)
 
         # Skip if target is in skip_list
         if targ_name in skip_list:
@@ -331,6 +343,12 @@ def run(
 
         end_time = time.time()
 
+        # Add point cloud visualization for TARGO models (similar to reference file)
+        if visualize and model_type in ['targo', 'targo_partial', 'targo_full_gt']:
+            # Save target point cloud for visualization
+            if hasattr(state, 'targ_pc') and state.targ_pc is not None:
+                save_point_cloud_as_ply(state.targ_pc, f"{logger.mesh_dir}/{scene_name}_targ_pc.ply")
+
         # Record occlusion
         occ_level_count_dict = record_occ_level_count(occ_level, occ_level_count_dict)
         offline_occ_level_dict[scene_name] = occ_level
@@ -351,36 +369,95 @@ def run(
         
         scene_mesh, target_mesh = result
         
+        # Store target mesh for length_width calculation
+        if target_mesh is not None:
+            scene_target_mesh_dict[scene_name] = target_mesh
+        elif 'target_mesh_gt' in locals() and target_mesh_gt is not None:
+            scene_target_mesh_dict[scene_name] = target_mesh_gt
+        
         # Planning based on model type
-        if model_type == 'vgn':
-            # VGN planning
-            qual_vol, rot_vol, width_vol = grasp_plan_fn(state, scene_mesh)
+        if visualize:
+            # Get scene mesh for visualization (similar to reference file)
+            mesh_pose_list = get_mesh_pose_list_from_world(sim.world, object_set)
+            scene_mesh = get_scene_from_mesh_pose_list(mesh_pose_list, tgt_id - 1)
+            
+            if model_type == 'vgn':
+                # VGN planning with visualization
+                qual_vol, rot_vol, width_vol = grasp_plan_fn(state, scene_mesh)
 
-            # Convert volumes to grasps
-            from src.vgn.detection_implicit_vgn import select, bound
-            qual_vol = bound(qual_vol, state.tsdf.voxel_size)
+                # Convert volumes to grasps
+                from src.vgn.detection_implicit_vgn import select, bound
+                qual_vol = bound(qual_vol, state.tsdf.voxel_size)
+                
+                # Create position grid for grasp selection
+                x, y, z = torch.meshgrid(
+                    torch.linspace(start=-0.5, end=0.5 - 1.0 / 40, steps=40), 
+                    torch.linspace(start=-0.5, end=0.5 - 1.0 / 40, steps=40), 
+                    torch.linspace(start=-0.5, end=0.5 - 1.0 / 40, steps=40)
+                )
+                pos = torch.stack((x, y, z), dim=-1).float()
+                center_vol = pos.view(40, 40, 40, 3)
+                
+                grasps, scores = select(qual_vol.copy(), center_vol, rot_vol, width_vol, threshold=0.9, force_detection=True, max_filter_size=4)
+                
+                timings["planning"] = 0.0  # VGN doesn't have separate planning time
+                visual_mesh = None  # VGN doesn't return visual mesh
+                
+            elif model_type in ['targo', 'targo_full_targ', 'targo_hunyun2', 'targo_ptv3', 'targo_partial', 'targo_full_gt']:
+                # TARGO planning with visualization
+                grasps, scores, timings["planning"], visual_mesh = grasp_plan_fn(
+                # grasps, scores, timings["planning"] = grasp_plan_fn(
+                    state, scene_mesh, 
+                    scene_name=scene_name, 
+                    cd_iou_measure=True, 
+                    target_mesh_gt=target_mesh_gt,
+                    visual_dict=visual_dict
+                )
             
-            # Create position grid for grasp selection
-            x, y, z = torch.meshgrid(
-                torch.linspace(start=-0.5, end=0.5 - 1.0 / 40, steps=40), 
-                torch.linspace(start=-0.5, end=0.5 - 1.0 / 40, steps=40), 
-                torch.linspace(start=-0.5, end=0.5 - 1.0 / 40, steps=40)
-            )
-            pos = torch.stack((x, y, z), dim=-1).float()
-            center_vol = pos.view(40, 40, 40, 3)
+                # visual_mesh = None  # TARGO doesn't return visual mesh
             
-            grasps, scores = select(qual_vol.copy(), center_vol, rot_vol, width_vol, threshold=0.9, force_detection=True, max_filter_size=4)
+            # Add RGB rendering (similar to reference file)
+            from src.vgn.perception import camera_on_sphere
+            origin = Transform(Rotation.identity(), np.r_[sim.size / 2, sim.size / 2, sim.size / 3])
+            r = 2 * sim.size
+            theta = np.pi / 3.0
+            phi = - np.pi / 2.0
+            extrinsic = camera_on_sphere(origin, r, theta, phi)
+            rgb, _, _ = sim.camera.render_with_seg(extrinsic)
+            output_path = f'{logger.mesh_dir}/{occ_level}_occ_{scene_name}_rgb.png'
+            plt.imsave(output_path, rgb)
             
-            timings["planning"] = 0.0  # VGN doesn't have separate planning time
-            
-        elif model_type in ['targo', 'targo_full_targ', 'targo_hunyun2', 'targo_ptv3', 'targo_partial', 'targo_full_gt']:
-            
-            grasps, scores, timings["planning"] = grasp_plan_fn(
-                state, scene_mesh, 
-                scene_name=scene_name, 
-                cd_iou_measure=True, 
-                target_mesh_gt=target_mesh_gt
-            )
+        else:
+            # Non-visualization planning
+            if model_type == 'vgn':
+                # VGN planning
+                qual_vol, rot_vol, width_vol = grasp_plan_fn(state, scene_mesh)
+
+                # Convert volumes to grasps
+                from src.vgn.detection_implicit_vgn import select, bound
+                qual_vol = bound(qual_vol, state.tsdf.voxel_size)
+                
+                # Create position grid for grasp selection
+                x, y, z = torch.meshgrid(
+                    torch.linspace(start=-0.5, end=0.5 - 1.0 / 40, steps=40), 
+                    torch.linspace(start=-0.5, end=0.5 - 1.0 / 40, steps=40), 
+                    torch.linspace(start=-0.5, end=0.5 - 1.0 / 40, steps=40)
+                )
+                pos = torch.stack((x, y, z), dim=-1).float()
+                center_vol = pos.view(40, 40, 40, 3)
+                
+                grasps, scores = select(qual_vol.copy(), center_vol, rot_vol, width_vol, threshold=0.9, force_detection=True, max_filter_size=4)
+                
+                timings["planning"] = 0.0  # VGN doesn't have separate planning time
+                
+            elif model_type in ['targo', 'targo_full_targ', 'targo_hunyun2', 'targo_ptv3', 'targo_partial', 'targo_full_gt']:
+                
+                grasps, scores, timings["planning"], visual_mesh = grasp_plan_fn(
+                    state, scene_mesh, 
+                    scene_name=scene_name, 
+                    cd_iou_measure=True, 
+                    target_mesh_gt=target_mesh_gt
+                )
 
         planning_times.append(timings["planning"])
         if isinstance(state.timings, dict):
@@ -397,9 +474,13 @@ def run(
             plan_fail = 1
             visual_fail = 0
             
+            # Visualize failure case if requested
+            if vis_failure_only and result_path:
+                visualize_failure_case(sim, scene_name, result_path, vis_rgb, None, None, state, grasp_plan_fn, 
+                                     model_type, target_mesh_gt, scene_target_mesh_dict)
+            
             # Update records
-            count_label_dict[scene_name] = (int(label), len(occluder_heights), occ_level)
-            height_label_dict[scene_name] = (int(label), relative_height, occ_level)
+            count_label_dict[scene_name] = (int(label), occluder_count, occ_level)
             tgt_bbx_label_dict[scene_name] = (int(label), length, width, height, occ_level)
             targ_name_label[targ_name] = int(label)
             
@@ -535,16 +616,24 @@ def run(
         print(f"label: {label}, plan_fail: {plan_fail}, visual_fail: {visual_fail}")
         print(f"dict_keys({list(state.__dict__.keys())})")
         
+        # Visualize failure case if requested and this is a failure
+        if vis_failure_only and result_path and label == Label.FAILURE:
+            visualize_failure_case(sim, scene_name, result_path, vis_rgb, grasp, score, state, grasp_plan_fn, 
+                                 model_type, target_mesh_gt, scene_target_mesh_dict)
+        
         # Store target name and label
         targ_name_label[targ_name] = int(label)
 
-        count_label_dict[scene_name] = (int(label), len(occluder_heights), occ_level)
-        height_label_dict[scene_name] = (int(label), relative_height, occ_level)
+        count_label_dict[scene_name] = (int(label), occluder_count, occ_level)
         tgt_bbx_label_dict[scene_name] = (int(label), length, width, height, occ_level)
 
         # If success, record success in occlusion bin
         if label != Label.FAILURE:
             occ_level_success_dict = record_occ_level_success(occ_level, occ_level_success_dict)
+            
+            # Add mesh visualization for successful grasps (similar to reference file)
+            if visualize and 'visual_mesh' in locals() and visual_mesh is not None:
+                logger.log_mesh(scene_mesh, visual_mesh, f'{occ_level}_occ_{scene_name}')
 
         # Optionally partial stats
         if num_id % 100 == 0:
@@ -562,34 +651,51 @@ def run(
     # Save target name and label dictionary
     with open(f'{result_path}/targ_name_label.json', 'w') as f:
         json.dump(targ_name_label, f)
+    
+    # Save count and bounding box dictionaries (similar to target_sample_offline_old.py)
+    with open(f'{result_path}/count_label_dict.json', 'w') as f:
+        json.dump(count_label_dict, f)
+    with open(f'{result_path}/tgt_bbx_label_dict.json', 'w') as f:
+        json.dump(tgt_bbx_label_dict, f)
         
     # Calculate success rate only for non-zero count levels
     non_zero_levels = [level for level in occ_level_count_dict if occ_level_count_dict[level] > 0]
     
-    # Create a mapping from scene_name to target_name for better meta_evaluations.txt
-    scene_to_target_mapping = {}
-    for scene_name in count_label_dict.keys():
-        # Extract target name from scene_name if available
-        # This is a simplified extraction - you may need to adjust based on your data
-        if scene_name in targ_name_label:
-            scene_to_target_mapping[scene_name] = scene_name  # Use scene_name as fallback
+    # scene_target_mesh_dict was already created during the main processing loop
     
     # Save metrics to meta_evaluations.txt
     with open(f'{result_path}/meta_evaluations.txt', 'w') as f:
-        f.write("Scene_ID, Target_Name, Occlusion_Level, IoU, CD, Success\n")
+        f.write("Scene_ID, Occlusion_Level, Num_Occluders, Length, Width, Height, Success\n")
         total_scenes = len(count_label_dict)
         success_count = 0
         
-        for scene_name, (label, num_occluders, occ_level) in count_label_dict.items():
-            # Use target name from mapping or scene_name as fallback
-            target_name = scene_to_target_mapping.get(scene_name, scene_name)
+        for scene_name, (label, occluder_count, occ_level) in count_label_dict.items():
             success = int(label != Label.FAILURE)
             
-            # For VGN, we don't have IoU and CD metrics, so use placeholder values
-            iou = 0.0  # Placeholder
-            cd = 0.0   # Placeholder
+            # Use the actual occluder count from the scene data
+            num_occluders = occluder_count
             
-            f.write(f"{scene_name}, {target_name}, {occ_level:.4f}, {iou:.6f}, {cd:.6f}, {success}\n")
+            # Get length, width, height from tgt_bbx_label_dict if available
+            length, width, height = 0.04, 0.04, 0.04  # Default fallback values
+            if scene_name in tgt_bbx_label_dict:
+                try:
+                    _, length, width, height, _ = tgt_bbx_label_dict[scene_name]
+                except Exception as e:
+                    print(f"Warning: Could not get dimensions from tgt_bbx_label_dict for {scene_name}: {e}")
+                    # Try to get from scene_target_mesh_dict as fallback
+                    if scene_name in scene_target_mesh_dict:
+                        try:
+                            target_mesh = scene_target_mesh_dict[scene_name]
+                            if target_mesh is not None:
+                                # Get bounding box dimensions
+                                bounds = target_mesh.bounds
+                                dims = bounds[1] - bounds[0]  # [width, height, depth]
+                                length, width, height = dims[0], dims[1], dims[2]
+                        except Exception as e2:
+                            print(f"Warning: Could not calculate dimensions for {scene_name}: {e2}")
+                            length, width, height = 0.04, 0.04, 0.04  # Use default
+            
+            f.write(f"{scene_name}, {occ_level:.4f}, {num_occluders}, {length:.6f}, {width:.6f}, {height:.6f}, {success}\n")
             
             # Count successful grasps
             if success == 1:
@@ -597,9 +703,7 @@ def run(
         
         if total_scenes > 0:
             success_rate = success_count / total_scenes * 100
-            f.write(f"\nAverage CD: {cd:.6f}\n")
-            f.write(f"Average IoU: {iou:.6f}\n")
-            f.write(f"Success Rate: {success_rate:.2f}%\n")
+            f.write(f"\nSuccess Rate: {success_rate:.2f}%\n")
             f.write(f"Total scenes evaluated: {total_scenes}\n")
             f.write(f"Successful grasps: {success_count}\n")
         else:
@@ -644,31 +748,58 @@ class Logger(object):
     def __init__(self, root, description, tgt_sample=False):
         self.logdir = root / "visualize"
         self.scenes_dir = self.logdir / "visualize" / "scenes"
+        self.logdir.mkdir(parents=True, exist_ok=True)
+        self.scenes_dir.mkdir(parents=True, exist_ok=True)
+
         self.mesh_dir = root / "visualize" / "meshes"
+        self.mesh_dir.mkdir(parents=True, exist_ok=True)
+
+        self.rounds_csv_path = self.logdir / "rounds.csv"
+        self.grasps_csv_path = self.logdir / "grasps.csv"
+        self._create_csv_files_if_needed(tgt_sample)
 
     def _create_csv_files_if_needed(self, tgt_sample):
         """Make rounds.csv and grasps.csv if they do not exist."""
         if not self.rounds_csv_path.exists():
             io.create_csv(self.rounds_csv_path, ["round_id", "object_count"])
 
-        if not self.grasps_csv_path.exists():
-            if not tgt_sample:
-                columns = [
-                    "round_id", "scene_id",
-                    "qx", "qy", "qz", "qw",
-                    "x", "y", "z",
-                    "width", "score", "label",
-                    "integration_time", "planning_time",
-                ]
-            else:
-                columns = [
-                    "round_id", "scene_id",
-                    "qx", "qy", "qz", "qw",
-                    "x", "y", "z",
-                    "width", "score", "label",
-                    "occ_level",
-                    "integration_time", "planning_time",
-                ]
+        if not self.grasps_csv_path.exists() and not tgt_sample:
+            columns = [
+                "round_id",
+                "scene_id",
+                "qx",
+                "qy",
+                "qz",
+                "qw",
+                "x",
+                "y",
+                "z",
+                "width",
+                "score",
+                "label",
+                "integration_time",
+                "planning_time",
+            ]
+            io.create_csv(self.grasps_csv_path, columns)
+            
+        if not self.grasps_csv_path.exists() and tgt_sample:
+            columns = [
+                "round_id",
+                "scene_id",
+                "qx",
+                "qy",
+                "qz",
+                "qw",
+                "x",
+                "y",
+                "z",
+                "width",
+                "score",
+                "label",
+                "occ_level",
+                "integration_time",
+                "planning_time",
+            ]
             io.create_csv(self.grasps_csv_path, columns)
 
     def last_round_id(self):
@@ -720,13 +851,18 @@ class Logger(object):
             label = 0
             score = 0
 
-        if occ_level is None:
+        if not occ_level:
             io.append_csv(
                 self.grasps_csv_path,
                 round_id,
                 scene_id,
-                qx, qy, qz, qw,
-                x, y, z,
+                qx,
+                qy,
+                qz,
+                qw,
+                x,
+                y,
+                z,
                 width,
                 score,
                 label,
@@ -738,8 +874,13 @@ class Logger(object):
                 self.grasps_csv_path,
                 round_id,
                 scene_id,
-                qx, qy, qz, qw,
-                x, y, z,
+                qx,
+                qy,
+                qz,
+                qw,
+                x,
+                y,
+                z,
                 width,
                 score,
                 label,

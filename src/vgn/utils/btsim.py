@@ -531,24 +531,32 @@ class Camera(object):
         gl_proj_matrix = self.proj_matrix.flatten(order="F")
 
         # Choose renderer based on hardware availability
-        renderer = pybullet.ER_BULLET_HARDWARE_OPENGL if self.use_hardware_renderer else pybullet.ER_TINY_RENDERER
+        # renderer = pybullet.ER_BULLET_HARDWARE_OPENGL if self.use_hardware_renderer else pybullet.ER_TINY_RENDERER
 
         result = self.p.getCameraImage(
             width=self.intrinsic.width,
             height=self.intrinsic.height,
             viewMatrix=gl_view_matrix,
             projectionMatrix=gl_proj_matrix,
-            renderer=renderer,
+            renderer=pybullet.ER_TINY_RENDERER,
         )
+        w, h, rgba, depth, seg = result
+        rgba = np.array(rgba, dtype=np.uint8).reshape(h, w, 4)
+        rgb = rgba[..., :3]
+        depth = np.array(depth, dtype=np.float32)
+        seg = np.array(seg, dtype=np.uint8).reshape(h, w)
 
-        rgb, z_buffer = result[2][:, :, :3], result[3]
+        # rgb, z_buffer = result[2][:, :, :3], result[3]
         depth = (
-            1.0 * self.far * self.near / (self.far - (self.far - self.near) * z_buffer)
+            1.0 * self.far * self.near / (self.far - (self.far - self.near) * depth)
         )
 
-        seg = None
+        # seg = None
         if segmentation:
-            seg = result[4]
+            # seg = result[4]
+            seg = seg
+        else:
+            seg = None
         return rgb, depth, seg
     
 
